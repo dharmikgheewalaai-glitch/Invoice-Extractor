@@ -1,5 +1,8 @@
 streamlit
-pdfplumber
 pandas
+pdfplumber
+pytesseract
+pdf2image
+Pillow
 openpyxl
 reportlab

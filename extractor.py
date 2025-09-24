@@ -1,39 +1,86 @@
 import pandas as pd
 import re
 
+# ----------------------------
+# Header Normalization
+# ----------------------------
 def normalize_headers(headers):
     """Map invoice headers to standard names"""
     header_map = {
+        "invoice no": "Invoice No",
+        "inv no": "Invoice No",
+        "invoice number": "Invoice No",
+        "bill no": "Invoice No",
+
+        "supplier gstin": "Supplier GSTIN",
+        "seller gstin": "Supplier GSTIN",
+        "our gstin": "Supplier GSTIN",
+
+        "customer gstin": "Customer GSTIN",
+        "buyer gstin": "Customer GSTIN",
+        "recipient gstin": "Customer GSTIN",
+
         "hsn code": "HSN",
         "hsn": "HSN",
+
         "item": "Item Name",
         "description": "Item Name",
         "product": "Item Name",
+        "item name": "Item Name",
+
         "qty": "Quantity",
         "quantity": "Quantity",
+        "qnty": "Quantity",
+
         "rate": "Rate",
         "price": "Rate",
+        "unit price": "Rate",
+
         "amount": "Gross Amount",
         "gross": "Gross Amount",
+        "gross amount": "Gross Amount",
+        "taxable value": "Gross Amount",
+
         "discount": "Discount(%)",
         "discount%": "Discount(%)",
+        "disc%": "Discount(%)",
+        "disc amount": "Discount Amount",
         "discount amount": "Discount Amount",
+
         "igst": "IGST(%)",
         "igst%": "IGST(%)",
         "igst amount": "IGST Amount",
+
         "cgst": "CGST(%)",
         "cgst%": "CGST(%)",
         "cgst amount": "CGST Amount",
+
         "sgst": "SGST(%)",
         "sgst%": "SGST(%)",
         "sgst amount": "SGST Amount",
+
         "net amount": "Net Amount",
         "total": "Net Amount",
+        "invoice total": "Net Amount",
+        "grand total": "Net Amount",
+        "total amount": "Net Amount",
     }
-    return [header_map.get(h.lower().strip(), h) for h in headers]
 
+    normalized = []
+    for h in headers:
+        if not h:
+            normalized.append("Unknown")
+            continue
+        h_clean = h.lower().strip().replace(":", "")
+        normalized.append(header_map.get(h_clean, h.strip()))
+    return normalized
+
+
+# ----------------------------
+# Data Cleaning
+# ----------------------------
 def clean_number(value):
-    """Remove symbols (₹,$,%,,) and convert to float if possible"""
+    """Remove symbols and convert to float if possible"""
     if pd.isna(value):
         return None
     if isinstance(value, str):
@@ -43,9 +90,14 @@ def clean_number(value):
     except:
         return None
 
+
+# ----------------------------
+# Auto-calculation
+# ----------------------------
 def calculate_missing_fields(row):
-    """Auto-calculate missing % or Amount fields for Discount, IGST, CGST, SGST"""
+    """Auto-calc % or Amount for Discount, IGST, CGST, SGST"""
     gross = row.get("Gross Amount")
+
     if gross:
         # Discount
         if row.get("Discount(%)") and not row.get("Discount Amount"):
@@ -57,19 +109,28 @@ def calculate_missing_fields(row):
         if row.get("IGST(%)") and not row.get("IGST Amount"):
             row["IGST Amount"] = gross * row["IGST(%)"] / 100
         elif row.get("IGST Amount") and not row.get("IGST(%)"):
-            row["IGST(%)"] = (row["IGST Amount"] / gross) * 100
+            if row["IGST Amount"] <= gross:
+                row["IGST(%)"] = (row["IGST Amount"] / gross) * 100
+            else:
+                row["IGST(%)"] = None
 
         # CGST
         if row.get("CGST(%)") and not row.get("CGST Amount"):
             row["CGST Amount"] = gross * row["CGST(%)"] / 100
         elif row.get("CGST Amount") and not row.get("CGST(%)"):
-            row["CGST(%)"] = (row["CGST Amount"] / gross) * 100
+            if row["CGST Amount"] <= gross:
+                row["CGST(%)"] = (row["CGST Amount"] / gross) * 100
+            else:
+                row["CGST(%)"] = None
 
         # SGST
         if row.get("SGST(%)") and not row.get("SGST Amount"):
             row["SGST Amount"] = gross * row["SGST(%)"] / 100
         elif row.get("SGST Amount") and not row.get("SGST(%)"):
-            row["SGST(%)"] = (row["SGST Amount"] / gross) * 100
+            if row["SGST Amount"] <= gross:
+                row["SGST(%)"] = (row["SGST Amount"] / gross) * 100
+            else:
+                row["SGST(%)"] = None
 
         # Net Amount
         calc_net = gross - (row.get("Discount Amount") or 0) \
@@ -81,10 +142,13 @@ def calculate_missing_fields(row):
 
     return row
 
-def extract_gstins(text):
-    """Extract Supplier GSTIN and Customer GSTIN from text"""
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[0-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
 
+# ----------------------------
+# GSTIN Extraction
+# ----------------------------
+def extract_gstins(text):
+    """Extract Supplier & Customer GSTIN from text"""
+    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[0-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
     supplier_gstin = "Unknown"
     customer_gstin = "Unknown"
 
@@ -96,15 +160,20 @@ def extract_gstins(text):
 
     return supplier_gstin, customer_gstin
 
+
+# ----------------------------
+# Main Parse Function
+# ----------------------------
 def parse_invoice(pdf, text, filename):
     all_tables = []
 
-    for page in pdf.pages:
-        tables = page.extract_tables()
-        for table in tables:
-            if table and len(table) > 1:
-                df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
-                all_tables.append(df)
+    if pdf:  # extract tables from PDF if available
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                if table and len(table) > 1:
+                    df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
+                    all_tables.append(df)
 
     if all_tables:
         df = pd.concat(all_tables, ignore_index=True)
@@ -118,9 +187,10 @@ def parse_invoice(pdf, text, filename):
             "Net Amount"
         ])
 
-    # Clean numbers
+    # Clean numeric columns
     numeric_cols = [
-        "Quantity", "Rate", "Gross Amount", "Discount(%)", "Discount Amount",
+        "Quantity", "Rate", "Gross Amount",
+        "Discount(%)", "Discount Amount",
         "IGST(%)", "IGST Amount",
         "CGST(%)", "CGST Amount",
         "SGST(%)", "SGST Amount",
@@ -130,16 +200,17 @@ def parse_invoice(pdf, text, filename):
         if col in df.columns:
             df[col] = df[col].apply(clean_number)
 
+    # Recalculate missing fields
     df = df.apply(calculate_missing_fields, axis=1)
 
-    # Extract Invoice No
+    # Extract invoice no
     invoice_no = re.findall(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.IGNORECASE)
     invoice_no = invoice_no[0] if invoice_no else "Unknown"
 
-    # Extract GSTINs
+    # GSTINs
     supplier_gstin, customer_gstin = extract_gstins(text)
 
-    # Add meta info
+    # Add meta columns
     df["Invoice No"] = invoice_no
     df["Supplier GSTIN"] = supplier_gstin
     df["Customer GSTIN"] = customer_gstin

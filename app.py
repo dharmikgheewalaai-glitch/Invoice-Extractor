@@ -1,34 +1,53 @@
 import streamlit as st
 import pandas as pd
 import pdfplumber
-import os
+import pytesseract
+from PIL import Image
+from pdf2image import convert_from_bytes
 from io import BytesIO
 from extractor import parse_invoice
 
 st.set_page_config(page_title="Invoice Extractor", layout="wide")
-st.title("Invoice Extractor")
+st.title("GST Invoice Extractor")
 
 uploaded_files = st.file_uploader(
-    "Upload Invoice PDF(s)", type=["pdf"], accept_multiple_files=True
+    "Upload Invoice PDF(s) or Image(s)", 
+    type=["pdf", "jpg", "jpeg", "png"], 
+    accept_multiple_files=True
 )
 
 if uploaded_files:
     all_data = []
 
     for uploaded_file in uploaded_files:
-        with pdfplumber.open(uploaded_file) as pdf:
-            text = ""
-            for page in pdf.pages:
-                page_text = page.extract_text() or ""
-                text += page_text + "\n"
+        file_type = uploaded_file.type
 
-            df = parse_invoice(pdf, text, uploaded_file.name)
-            all_data.append(df)
+        text = ""
+        pdf_obj = None
 
-    # Combine all invoices
+        if "pdf" in file_type:
+            pdf_obj = pdfplumber.open(uploaded_file)
+            for page in pdf_obj.pages:
+                page_text = page.extract_text()
+                if not page_text:
+                    # OCR for scanned PDF page
+                    images = convert_from_bytes(uploaded_file.read())
+                    for img in images:
+                        ocr_text = pytesseract.image_to_string(img)
+                        text += ocr_text + "\n"
+                else:
+                    text += page_text + "\n"
+
+        elif "image" in file_type or file_type in ["image/jpeg", "image/png"]:
+            image = Image.open(uploaded_file)
+            text = pytesseract.image_to_string(image)
+
+        df = parse_invoice(pdf_obj, text, uploaded_file.name)
+        all_data.append(df)
+
     final_df = pd.concat(all_data, ignore_index=True)
 
-    # Ensure correct column order
+    # enforce column order
     column_order = [
         "Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File",
         "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
@@ -43,11 +62,12 @@ if uploaded_files:
             final_df[col] = None
     final_df = final_df[column_order]
 
-    st.subheader("Invoice Line Items")
+    st.subheader("Extracted Invoice Data")
     st.dataframe(final_df, use_container_width=True)
 
-    # --- Download Options ---
+    # ---- Download options ----
     csv = final_df.to_csv(index=False).encode("utf-8")
+
     excel_buffer = BytesIO()
     final_df.to_excel(excel_buffer, index=False, engine="openpyxl")
     excel_data = excel_buffer.getvalue()
