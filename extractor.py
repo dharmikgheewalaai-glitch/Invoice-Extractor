@@ -2,15 +2,15 @@ import pandas as pd
 import re
 
 def safe_float(val):
-    """Convert string to float safely."""
+    """Convert string/None to float safely."""
     try:
-        return float(val)
+        return float(str(val).replace(",", "").strip())
     except:
         return 0.0
 
 def parse_invoice(pdf, text, source_file):
     """
-    Extract invoice details into a structured dataframe.
+    Extract structured invoice data from PDF into dataframe.
     """
 
     # ------------------------
@@ -42,112 +42,110 @@ def parse_invoice(pdf, text, source_file):
         customer_gstin = generic_match[1]
 
     # ------------------------
-    # Extract line items
+    # Extract table rows from PDF
     # ------------------------
     rows = []
-    for line in text.split("\n"):
-        parts = line.split()
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        for table in tables:
+            for row in table:
+                clean_row = [str(cell).strip() if cell else "" for cell in row]
 
-        # crude HSN detection (4+ digits)
-        if any(re.match(r"\d{4,}", p) for p in parts):
-            hsn = next((p for p in parts if re.match(r"\d{4,}", p)), "")
+                # Detect if row has HSN (4+ digit code) → likely an item row
+                if any(re.match(r"\d{4,}", c) for c in clean_row):
+                    hsn = next((c for c in clean_row if re.match(r"\d{4,}", c)), "")
+                    qty = safe_float(next((c for c in clean_row if re.match(r"^\d+(\.\d+)?$", c)), 0))
+                    rate = 0.0
+                    gross = 0.0
 
-            # Try to capture qty and rate
-            qty = next((p for p in parts if re.match(r"^\d+(\.\d+)?$", p)), "0")
-            rate = "0"
-            if len(parts) > 2:
-                rate = parts[-2] if re.match(r"^\d+(\.\d+)?$", parts[-2]) else "0"
+                    # try to map Rate and Gross if table has enough cols
+                    if len(clean_row) >= 5:
+                        rate = safe_float(clean_row[-3])
+                        gross = safe_float(clean_row[-2])
 
-            qty = safe_float(qty)
-            rate = safe_float(rate)
-            gross = qty * rate
+                    gross = qty * rate if not gross else gross
 
-            # ------------------------
-            # Discounts
-            # ------------------------
-            disc_percent = ""
-            disc_amount = ""
+                    # ------------------------
+                    # Discounts
+                    # ------------------------
+                    disc_percent = ""
+                    disc_amount = ""
+                    for c in clean_row:
+                        if "%" in c:
+                            val = safe_float(c.replace("%", ""))
+                            disc_percent = val
+                            disc_amount = round((gross * val) / 100, 2)
+                        elif re.search(r"disc", c, re.IGNORECASE):
+                            val = safe_float(re.sub(r"[^\d.]", "", c))
+                            disc_amount = val
+                            disc_percent = round((val / gross) * 100, 2) if gross else ""
 
-            disc_match = re.search(r"(\d+(\.\d+)?)\s*%", line)
-            if disc_match:
-                disc_percent = safe_float(disc_match.group(1))
-                disc_amount = round((gross * disc_percent) / 100, 2)
-            else:
-                disc_amt_match = re.search(r"Disc(?:ount)?[:\s]*([\d.]+)", line, re.IGNORECASE)
-                if disc_amt_match:
-                    disc_amount = safe_float(disc_amt_match.group(1))
-                    disc_percent = round((disc_amount / gross) * 100, 2) if gross else ""
+                    gross_after_disc = gross - safe_float(disc_amount)
 
-            gross_after_disc = gross - safe_float(disc_amount)
+                    # ------------------------
+                    # GST extraction
+                    # ------------------------
+                    igst_percent = igst_amount = ""
+                    cgst_percent = cgst_amount = ""
+                    sgst_percent = sgst_amount = ""
 
-            # ------------------------
-            # GST handling
-            # ------------------------
-            igst_percent = igst_amount = ""
-            cgst_percent = cgst_amount = ""
-            sgst_percent = sgst_amount = ""
+                    for c in clean_row:
+                        if "IGST" in c.upper():
+                            num = safe_float(re.sub(r"[^\d.]", "", c))
+                            if "%" in c:
+                                igst_percent = num
+                                igst_amount = round((gross_after_disc * num) / 100, 2)
+                            else:
+                                igst_amount = num
+                                igst_percent = round((igst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
+                        if "CGST" in c.upper():
+                            num = safe_float(re.sub(r"[^\d.]", "", c))
+                            if "%" in c:
+                                cgst_percent = num
+                                cgst_amount = round((gross_after_disc * num) / 100, 2)
+                            else:
+                                cgst_amount = num
+                                cgst_percent = round((cgst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
+                        if "SGST" in c.upper():
+                            num = safe_float(re.sub(r"[^\d.]", "", c))
+                            if "%" in c:
+                                sgst_percent = num
+                                sgst_amount = round((gross_after_disc * num) / 100, 2)
+                            else:
+                                sgst_amount = num
+                                sgst_percent = round((sgst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
 
-            # IGST
-            igst_match = re.search(r"IGST[:\s]*([\d.]+)%?", line, re.IGNORECASE)
-            if igst_match:
-                val = safe_float(igst_match.group(1))
-                if "%" in igst_match.group(0):
-                    igst_percent = val
-                    igst_amount = round((gross_after_disc * igst_percent) / 100, 2)
-                else:
-                    igst_amount = val
-                    igst_percent = round((igst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
+                    # ------------------------
+                    # Net Amount
+                    # ------------------------
+                    net_amount = gross_after_disc + safe_float(igst_amount) + safe_float(cgst_amount) + safe_float(sgst_amount)
 
-            # CGST
-            cgst_match = re.search(r"CGST[:\s]*([\d.]+)%?", line, re.IGNORECASE)
-            if cgst_match:
-                val = safe_float(cgst_match.group(1))
-                if "%" in cgst_match.group(0):
-                    cgst_percent = val
-                    cgst_amount = round((gross_after_disc * cgst_percent) / 100, 2)
-                else:
-                    cgst_amount = val
-                    cgst_percent = round((cgst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
+                    # Item Name (best guess: text between HSN and Qty)
+                    item_name = " ".join(clean_row[1:3]) if len(clean_row) > 3 else "Item"
 
-            # SGST
-            sgst_match = re.search(r"SGST[:\s]*([\d.]+)%?", line, re.IGNORECASE)
-            if sgst_match:
-                val = safe_float(sgst_match.group(1))
-                if "%" in sgst_match.group(0):
-                    sgst_percent = val
-                    sgst_amount = round((gross_after_disc * sgst_percent) / 100, 2)
-                else:
-                    sgst_amount = val
-                    sgst_percent = round((sgst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
-
-            # ------------------------
-            # Net Amount
-            # ------------------------
-            net_amount = gross_after_disc + safe_float(igst_amount) + safe_float(cgst_amount) + safe_float(sgst_amount)
-
-            rows.append([
-                invoice_no,
-                supplier_gstin,
-                customer_gstin,
-                source_file,
-                hsn,
-                "Item",  # placeholder
-                qty,
-                rate,
-                gross,
-                disc_percent,
-                disc_amount,
-                igst_percent,
-                igst_amount,
-                cgst_percent,
-                cgst_amount,
-                sgst_percent,
-                sgst_amount,
-                net_amount
-            ])
+                    rows.append([
+                        invoice_no,
+                        supplier_gstin,
+                        customer_gstin,
+                        source_file,
+                        hsn,
+                        item_name,
+                        qty,
+                        rate,
+                        gross,
+                        disc_percent,
+                        disc_amount,
+                        igst_percent,
+                        igst_amount,
+                        cgst_percent,
+                        cgst_amount,
+                        sgst_percent,
+                        sgst_amount,
+                        net_amount
+                    ])
 
     # ------------------------
-    # Create DataFrame
+    # Build DataFrame
     # ------------------------
     df = pd.DataFrame(rows, columns=[
         "Invoice No",
