@@ -1,14 +1,9 @@
 import streamlit as st
 import pandas as pd
-import os
 from extractor import process_file
-import pytesseract
 
-# Optional: For Windows users who need to set tesseract path
-# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-st.set_page_config(page_title="Invoice Extractor", layout="wide")
-st.title("Invoice Extractor")
+st.set_page_config(page_title="GST Invoice Extractor", layout="wide")
+st.title("GST Invoice Extractor")
 
 uploaded_files = st.file_uploader(
     "Upload invoice files (PDF/Image)", 
@@ -18,21 +13,16 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     all_data = []
-
     for file in uploaded_files:
         with open(file.name, "wb") as f:
             f.write(file.getbuffer())
-        try:
-            extracted_data = process_file(file.name)
-            for row in extracted_data:
-                row["Source File"] = file.name
-                all_data.append(row)
-        except Exception as e:
-            st.error(f"❌ Error processing {file.name}: {str(e)}")
+        extracted_data = process_file(file.name)
+        for row in extracted_data:
+            row["Source File"] = file.name
+            all_data.append(row)
 
     if all_data:
         df = pd.DataFrame(all_data)
-
         st.subheader("📊 Extracted Invoice Data")
         st.dataframe(df, use_container_width=True)
 
