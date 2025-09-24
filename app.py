@@ -21,10 +21,11 @@ if uploaded_files:
         with pdfplumber.open(uploaded_file) as pdf:
             text = ""
             for page in pdf.pages:
-                text += page.extract_text() + "\n"
+                page_text = page.extract_text() or ""
+                text += page_text + "\n"
 
-        df = parse_invoice(text)
-        all_data.append(df)
+            df = parse_invoice(pdf, text, uploaded_file.name)
+            all_data.append(df)
 
     # Combine all invoices
     final_df = pd.concat(all_data, ignore_index=True)

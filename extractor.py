@@ -1,39 +1,71 @@
 import pandas as pd
 import re
 
-def parse_invoice(text: str):
-    """
-    Parse invoice text and return DataFrame with invoice line items.
-    Includes Invoice No and GSTIN as columns.
-    """
+def normalize_headers(headers):
+    """Map invoice headers to standard names"""
+    header_map = {
+        "hsn code": "HSN",
+        "hsn": "HSN",
+        "item": "Item Name",
+        "description": "Item Name",
+        "product": "Item Name",
+        "qty": "Quantity",
+        "quantity": "Quantity",
+        "rate": "Rate",
+        "price": "Rate",
+        "amount": "Gross Amount",
+        "gross": "Gross Amount",
+        "discount": "Discount(%)",
+        "igst": "IGST(%)",
+        "igst amount": "IGST Amount",
+        "cgst": "CGST(%)",
+        "cgst amount": "CGST Amount",
+        "sgst": "SGST(%)",
+        "sgst amount": "SGST Amount",
+        "net amount": "Net Amount",
+        "total": "Net Amount",
+    }
+    return [header_map.get(h.lower().strip(), h) for h in headers]
 
-    # Extract Invoice Number
+def parse_invoice(pdf, text, filename):
+    """
+    Extracts invoice data:
+    - Reads tables with pdfplumber
+    - Normalizes headers
+    - Adds Invoice No, GSTIN, and Source File columns
+    """
+    all_tables = []
+
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        for table in tables:
+            if table and len(table) > 1:
+                df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
+                all_tables.append(df)
+
+    # Combine all detected tables
+    if all_tables:
+        df = pd.concat(all_tables, ignore_index=True)
+    else:
+        df = pd.DataFrame(columns=[
+            "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
+            "Discount(%)", "Discount Amount",
+            "IGST(%)", "IGST Amount",
+            "CGST(%)", "CGST Amount",
+            "SGST(%)", "SGST Amount",
+            "Net Amount"
+        ])
+
+    # Extract Invoice No & GSTIN
     invoice_no = re.findall(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.IGNORECASE)
     invoice_no = invoice_no[0] if invoice_no else "Unknown"
 
-    # Extract GSTIN (15 characters: 2 digits + 10 PAN chars + 1 entity + 1Z + 1 check digit)
-    gstin = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
+    gstin = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[0-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
     gstin = gstin[0] if gstin else "Unknown"
 
-    # ⚠️ Replace with real parsing logic using pdfplumber.extract_table
-    data = {
-        "Invoice No": [invoice_no, invoice_no],
-        "GSTIN": [gstin, gstin],
-        "HSN": ["1234", "5678"],
-        "Item Name": ["Product A", "Product B"],
-        "Quantity": [2, 5],
-        "Rate": [100, 200],
-        "Gross Amount": [200, 1000],
-        "Discount(%)": [5, 10],
-        "Discount Amount": [10, 100],
-        "IGST(%)": [18, 18],
-        "IGST Amount": [34.2, 162],
-        "CGST(%)": [9, 9],
-        "CGST Amount": [17.1, 81],
-        "SGST(%)": [9, 9],
-        "SGST Amount": [17.1, 81],
-        "Net Amount": [224.2, 962],
-    }
+    # Add Invoice Info to every row
+    df["Invoice No"] = invoice_no
+    df["GSTIN"] = gstin
+    df["Source File"] = filename
 
-    df = pd.DataFrame(data)
     return df
