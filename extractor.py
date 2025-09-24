@@ -67,15 +67,14 @@ def clean_number(value):
 def calculate_missing_fields(row):
     gross = row.get("Gross Amount")
 
-    # ✅ Discount logic unchanged
+    # ✅ Discount calculation
     if gross:
         if row.get("Discount(%)") and not row.get("Discount Amount"):
             row["Discount Amount"] = gross * row["Discount(%)"] / 100
         elif row.get("Discount Amount") and not row.get("Discount(%)"):
             row["Discount(%)"] = (row["Discount Amount"] / gross) * 100
 
-    # ✅ GST handling: Only calculate amount if % exists. 
-    # If only amount is there, leave % blank.
+    # ✅ GST calculation
     for tax in ["IGST", "CGST", "SGST"]:
         perc_col = f"{tax}(%)"
         amt_col = f"{tax} Amount"
@@ -83,7 +82,7 @@ def calculate_missing_fields(row):
         if gross:
             if row.get(perc_col) and not row.get(amt_col):
                 row[amt_col] = gross * row[perc_col] / 100
-            # DO NOT back-calc % if only amount present
+            # ❌ Do not calculate % if only amount is given → leave % blank
 
     # ✅ Net Amount calculation
     if gross:
@@ -111,11 +110,11 @@ def extract_gstins(text):
 # HSN Extraction
 # ----------------------------
 def extract_hsn(value):
-    """Extract first valid HSN code (4–8 digits) from a string."""
+    """Extract only numeric HSN (4–8 digits)."""
     if not isinstance(value, str):
-        return value
+        return None
     match = re.search(r"\b\d{4,8}\b", value)
-    return match.group(0) if match else value
+    return match.group(0) if match else None
 
 # ----------------------------
 # Main Parse
@@ -154,15 +153,11 @@ def parse_invoice(pdf, text, filename):
         if col in df.columns:
             df[col] = df[col].apply(clean_number)
 
-    # Extract HSN if missing
+    # ✅ Extract only valid HSN codes
     if "HSN" in df.columns:
         df["HSN"] = df["HSN"].apply(extract_hsn)
     else:
-        # Try to pull HSN from Item/Description if possible
-        if "Item Name" in df.columns:
-            df["HSN"] = df["Item Name"].apply(extract_hsn)
-        else:
-            df["HSN"] = None
+        df["HSN"] = None
 
     # Recalculate dependent fields
     df = df.apply(calculate_missing_fields, axis=1)
