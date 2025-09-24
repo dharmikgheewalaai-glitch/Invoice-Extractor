@@ -6,9 +6,21 @@ from PIL import Image
 from pdf2image import convert_from_bytes
 from io import BytesIO
 from extractor import parse_invoice
+import shutil
 
 st.set_page_config(page_title="Invoice Extractor", layout="wide")
 st.title("GST Invoice Extractor")
+
+# 🔹 Check if Tesseract is installed
+TESSERACT_PATH = shutil.which("tesseract")
+if not TESSERACT_PATH:
+    st.warning("⚠️ Tesseract OCR not found. Please install it:\n"
+               "- **Windows:** Install from https://github.com/UB-Mannheim/tesseract/wiki\n"
+               "- **Linux:** `sudo apt-get install tesseract-ocr`\n"
+               "- **Mac:** `brew install tesseract`\n\n"
+               "OCR features for scanned PDFs/images will not work until installed.")
+else:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 uploaded_files = st.file_uploader(
     "Upload Invoice PDF(s) or Image(s)", 
@@ -21,7 +33,6 @@ if uploaded_files:
 
     for uploaded_file in uploaded_files:
         file_type = uploaded_file.type
-
         text = ""
         pdf_obj = None
 
@@ -29,16 +40,17 @@ if uploaded_files:
             pdf_obj = pdfplumber.open(uploaded_file)
             for page in pdf_obj.pages:
                 page_text = page.extract_text()
-                if not page_text:
+                if not page_text and TESSERACT_PATH:
                     # OCR for scanned PDF page
+                    uploaded_file.seek(0)
                     images = convert_from_bytes(uploaded_file.read())
                     for img in images:
                         ocr_text = pytesseract.image_to_string(img)
                         text += ocr_text + "\n"
-                else:
+                elif page_text:
                     text += page_text + "\n"
 
-        elif "image" in file_type or file_type in ["image/jpeg", "image/png"]:
+        elif "image" in file_type and TESSERACT_PATH:
             image = Image.open(uploaded_file)
             text = pytesseract.image_to_string(image)
 
