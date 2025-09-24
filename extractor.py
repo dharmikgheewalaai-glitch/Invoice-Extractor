@@ -22,43 +22,38 @@ EXPECTED_COLUMNS = [
     "Net Amount",
 ]
 
-# Header mapping (same as before, trimmed for brevity)
-HEADER_MAP = {
-    "invoice no": "Invoice No",
-    "invoice #": "Invoice No",
-    "bill no": "Invoice No",
-    "voucher no": "Invoice No",
-    "supplier gstin": "Supplier GSTIN",
-    "customer gstin": "Customer GSTIN",
-    "hsn code": "HSN",
-    "qty": "Quantity",
-    "unit price": "Rate",
-    "gross amount": "Gross Amount",
-    "discount%": "Discount(%)",
-    "igst%": "IGST(%)",
-    "igst amount": "IGST Amount",
-    "cgst%": "CGST(%)",
-    "cgst amount": "CGST Amount",
-    "sgst%": "SGST(%)",
-    "sgst amount": "SGST Amount",
-    "net amount": "Net Amount",
-}
-
-
 def normalize_headers(headers):
     """Map detected headers to exact expected names"""
-    return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
-
+    header_map = {
+        "hsn": "HSN",
+        "hsn code": "HSN",
+        "item": "Item Name",
+        "description": "Item Name",
+        "product": "Item Name",
+        "qty": "Quantity",
+        "quantity": "Quantity",
+        "rate": "Rate",
+        "price": "Rate",
+        "gross": "Gross Amount",
+        "amount": "Gross Amount",
+        "total": "Net Amount",
+        "net amount": "Net Amount",
+        "discount": "Discount%",
+        "discount %": "Discount%",
+        "igst": "IGST%",
+        "igst amount": "IGST Amount",
+        "cgst": "CGST%",
+        "cgst amount": "CGST Amount",
+        "sgst": "SGST%",
+        "sgst amount": "SGST Amount",
+    }
+    return [header_map.get(h.lower().strip(), h.strip()) for h in headers]
 
 def clean_numeric(value):
     """Remove unwanted symbols from numbers (₹, %, commas, etc.)"""
     if isinstance(value, str):
-        value = re.sub(r"[^\d.\-]", "", value)
-        return float(value) if value else 0.0
-    if pd.isna(value):
-        return 0.0
-    return float(value)
-
+        value = re.sub(r"[^\d.\-]", "", value)  # keep only numbers, dot, minus
+    return value
 
 def parse_invoice(pdf, text, filename):
     """Extracts invoice table data and adds Invoice No, GSTIN, and Source File"""
@@ -99,19 +94,7 @@ def parse_invoice(pdf, text, filename):
     # Ensure all expected columns exist
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
-            df[col] = 0 if "Amount" in col or "Rate" in col or "%" in col else ""
-
-    # Auto-calc Net Amount if missing or zero
-    if "Net Amount" in df.columns:
-        df["Net Amount"] = df.apply(
-            lambda row: row["Gross Amount"]
-                        - row["Discount Amount"]
-                        + row["IGST Amount"]
-                        + row["CGST Amount"]
-                        + row["SGST Amount"]
-            if row["Net Amount"] in [0, None, ""] else row["Net Amount"],
-            axis=1
-        )
+            df[col] = ""
 
     # Reorder columns
     df = df[EXPECTED_COLUMNS]
