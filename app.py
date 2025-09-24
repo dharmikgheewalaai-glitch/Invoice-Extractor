@@ -1,106 +1,49 @@
 import streamlit as st
 import pandas as pd
-import pdfplumber
+import os
+from extractor import process_file
 import pytesseract
-from PIL import Image
-from pdf2image import convert_from_bytes
-from io import BytesIO
-from extractor import parse_invoice
-import shutil
+
+# Optional: For Windows users who need to set tesseract path
+# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 st.set_page_config(page_title="Invoice Extractor", layout="wide")
-st.title("GST Invoice Extractor")
-
-# 🔹 Check if Tesseract is installed
-TESSERACT_PATH = shutil.which("tesseract")
-if not TESSERACT_PATH:
-    st.warning("⚠️ Tesseract OCR not found. Please install it:\n"
-               "- **Windows:** Install from https://github.com/UB-Mannheim/tesseract/wiki\n"
-               "- **Linux:** `sudo apt-get install tesseract-ocr`\n"
-               "- **Mac:** `brew install tesseract`\n\n"
-               "OCR features for scanned PDFs/images will not work until installed.")
-else:
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+st.title("Invoice Extractor")
 
 uploaded_files = st.file_uploader(
-    "Upload Invoice PDF(s) or Image(s)", 
-    type=["pdf", "jpg", "jpeg", "png"], 
+    "Upload invoice files (PDF/Image)", 
+    type=["pdf", "png", "jpg", "jpeg"], 
     accept_multiple_files=True
 )
 
 if uploaded_files:
     all_data = []
 
-    for uploaded_file in uploaded_files:
-        file_type = uploaded_file.type
-        text = ""
-        pdf_obj = None
+    for file in uploaded_files:
+        with open(file.name, "wb") as f:
+            f.write(file.getbuffer())
+        try:
+            extracted_data = process_file(file.name)
+            for row in extracted_data:
+                row["Source File"] = file.name
+                all_data.append(row)
+        except Exception as e:
+            st.error(f"❌ Error processing {file.name}: {str(e)}")
 
-        if "pdf" in file_type:
-            pdf_obj = pdfplumber.open(uploaded_file)
-            for page in pdf_obj.pages:
-                page_text = page.extract_text()
-                if not page_text and TESSERACT_PATH:
-                    # OCR for scanned PDF page
-                    uploaded_file.seek(0)
-                    images = convert_from_bytes(uploaded_file.read())
-                    for img in images:
-                        ocr_text = pytesseract.image_to_string(img)
-                        text += ocr_text + "\n"
-                elif page_text:
-                    text += page_text + "\n"
+    if all_data:
+        df = pd.DataFrame(all_data)
 
-        elif "image" in file_type and TESSERACT_PATH:
-            image = Image.open(uploaded_file)
-            text = pytesseract.image_to_string(image)
+        st.subheader("📊 Extracted Invoice Data")
+        st.dataframe(df, use_container_width=True)
 
-        df = parse_invoice(pdf_obj, text, uploaded_file.name)
-        all_data.append(df)
+        # Download buttons
+        st.subheader("📥 Download Extracted Data")
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download CSV", csv, "invoices.csv", "text/csv")
 
-    final_df = pd.concat(all_data, ignore_index=True)
+        excel = df.to_excel("invoices.xlsx", index=False)
+        with open("invoices.xlsx", "rb") as f:
+            st.download_button("Download Excel", f, "invoices.xlsx")
 
-    # enforce column order
-    column_order = [
-        "Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File",
-        "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
-        "Discount(%)", "Discount Amount",
-        "IGST(%)", "IGST Amount",
-        "CGST(%)", "CGST Amount",
-        "SGST(%)", "SGST Amount",
-        "Net Amount"
-    ]
-    for col in column_order:
-        if col not in final_df.columns:
-            final_df[col] = None
-    final_df = final_df[column_order]
-
-    st.subheader("Extracted Invoice Data")
-    st.dataframe(final_df, use_container_width=True)
-
-    # ---- Download options ----
-    csv = final_df.to_csv(index=False).encode("utf-8")
-
-    excel_buffer = BytesIO()
-    final_df.to_excel(excel_buffer, index=False, engine="openpyxl")
-    excel_data = excel_buffer.getvalue()
-
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-    from reportlab.lib import colors
-    pdf_buffer = BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer)
-    table_data = [final_df.columns.to_list()] + final_df.values.tolist()
-    table = Table(table_data)
-    style = TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("GRID", (0, 0), (-1, -1), 1, colors.black),
-    ])
-    table.setStyle(style)
-    doc.build([table])
-    pdf_data = pdf_buffer.getvalue()
-
-    st.download_button("⬇ Download CSV", csv, "invoice_data.csv", "text/csv")
-    st.download_button("⬇ Download Excel", excel_data, "invoice_data.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    st.download_button("⬇ Download PDF", pdf_data, "invoice_data.pdf", "application/pdf")
+        pdf = df.to_markdown(index=False).encode("utf-8")
+        st.download_button("Download PDF (table as text)", pdf, "invoices.pdf")

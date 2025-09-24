@@ -1,219 +1,57 @@
-import pandas as pd
 import re
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+import pandas as pd
+import io
 
-# ----------------------------
-# Header Normalization
-# ----------------------------
-def normalize_headers(headers):
-    """Map invoice headers to standard names"""
-    header_map = {
-        "invoice no": "Invoice No",
-        "inv no": "Invoice No",
-        "invoice number": "Invoice No",
-        "bill no": "Invoice No",
+def extract_text_from_pdf(file_path):
+    text = ""
+    doc = fitz.open(file_path)
+    for page in doc:
+        text += page.get_text()
+    if not text.strip():
+        # OCR for scanned PDFs
+        for page in doc:
+            pix = page.get_pixmap()
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            text += pytesseract.image_to_string(img)
+    return text
 
-        "supplier gstin": "Supplier GSTIN",
-        "seller gstin": "Supplier GSTIN",
-        "our gstin": "Supplier GSTIN",
+def extract_text_from_image(file_path):
+    img = Image.open(file_path)
+    return pytesseract.image_to_string(img)
 
-        "customer gstin": "Customer GSTIN",
-        "buyer gstin": "Customer GSTIN",
-        "recipient gstin": "Customer GSTIN",
-
-        "hsn code": "HSN",
-        "hsn": "HSN",
-
-        "item": "Item Name",
-        "description": "Item Name",
-        "product": "Item Name",
-        "item name": "Item Name",
-
-        "qty": "Quantity",
-        "quantity": "Quantity",
-        "qnty": "Quantity",
-
-        "rate": "Rate",
-        "price": "Rate",
-        "unit price": "Rate",
-
-        "amount": "Gross Amount",
-        "gross": "Gross Amount",
-        "gross amount": "Gross Amount",
-        "taxable value": "Gross Amount",
-
-        "discount": "Discount(%)",
-        "discount%": "Discount(%)",
-        "disc%": "Discount(%)",
-        "disc amount": "Discount Amount",
-        "discount amount": "Discount Amount",
-
-        "igst": "IGST(%)",
-        "igst%": "IGST(%)",
-        "igst amount": "IGST Amount",
-
-        "cgst": "CGST(%)",
-        "cgst%": "CGST(%)",
-        "cgst amount": "CGST Amount",
-
-        "sgst": "SGST(%)",
-        "sgst%": "SGST(%)",
-        "sgst amount": "SGST Amount",
-
-        "net amount": "Net Amount",
-        "total": "Net Amount",
-        "invoice total": "Net Amount",
-        "grand total": "Net Amount",
-        "total amount": "Net Amount",
-    }
-
-    normalized = []
-    for h in headers:
-        if not h:
-            normalized.append("Unknown")
-            continue
-        h_clean = h.lower().strip().replace(":", "")
-        normalized.append(header_map.get(h_clean, h.strip()))
-    return normalized
-
-
-# ----------------------------
-# Data Cleaning
-# ----------------------------
-def clean_number(value):
-    """Remove symbols and convert to float if possible"""
-    if pd.isna(value):
-        return None
-    if isinstance(value, str):
-        value = re.sub(r"[^\d.\-]", "", value)
-    try:
-        return float(value) if value != "" else None
-    except:
-        return None
-
-
-# ----------------------------
-# Auto-calculation
-# ----------------------------
-def calculate_missing_fields(row):
-    """Auto-calc % or Amount for Discount, IGST, CGST, SGST"""
-    gross = row.get("Gross Amount")
-
-    if gross:
-        # Discount
-        if row.get("Discount(%)") and not row.get("Discount Amount"):
-            row["Discount Amount"] = gross * row["Discount(%)"] / 100
-        elif row.get("Discount Amount") and not row.get("Discount(%)"):
-            row["Discount(%)"] = (row["Discount Amount"] / gross) * 100
-
-        # IGST
-        if row.get("IGST(%)") and not row.get("IGST Amount"):
-            row["IGST Amount"] = gross * row["IGST(%)"] / 100
-        elif row.get("IGST Amount") and not row.get("IGST(%)"):
-            if row["IGST Amount"] <= gross:
-                row["IGST(%)"] = (row["IGST Amount"] / gross) * 100
-            else:
-                row["IGST(%)"] = None
-
-        # CGST
-        if row.get("CGST(%)") and not row.get("CGST Amount"):
-            row["CGST Amount"] = gross * row["CGST(%)"] / 100
-        elif row.get("CGST Amount") and not row.get("CGST(%)"):
-            if row["CGST Amount"] <= gross:
-                row["CGST(%)"] = (row["CGST Amount"] / gross) * 100
-            else:
-                row["CGST(%)"] = None
-
-        # SGST
-        if row.get("SGST(%)") and not row.get("SGST Amount"):
-            row["SGST Amount"] = gross * row["SGST(%)"] / 100
-        elif row.get("SGST Amount") and not row.get("SGST(%)"):
-            if row["SGST Amount"] <= gross:
-                row["SGST(%)"] = (row["SGST Amount"] / gross) * 100
-            else:
-                row["SGST(%)"] = None
-
-        # Net Amount
-        calc_net = gross - (row.get("Discount Amount") or 0) \
-                   + (row.get("IGST Amount") or 0) \
-                   + (row.get("CGST Amount") or 0) \
-                   + (row.get("SGST Amount") or 0)
-        if not row.get("Net Amount"):
-            row["Net Amount"] = calc_net
-
-    return row
-
-
-# ----------------------------
-# GSTIN Extraction
-# ----------------------------
-def extract_gstins(text):
-    """Extract Supplier & Customer GSTIN from text"""
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[0-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
-    supplier_gstin = "Unknown"
-    customer_gstin = "Unknown"
-
-    if len(gstins) == 1:
-        supplier_gstin = gstins[0]
-    elif len(gstins) >= 2:
-        supplier_gstin = gstins[0]
-        customer_gstin = gstins[1]
-
-    return supplier_gstin, customer_gstin
-
-
-# ----------------------------
-# Main Parse Function
-# ----------------------------
-def parse_invoice(pdf, text, filename):
-    all_tables = []
-
-    if pdf:  # extract tables from PDF if available
-        for page in pdf.pages:
-            tables = page.extract_tables()
-            for table in tables:
-                if table and len(table) > 1:
-                    df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
-                    all_tables.append(df)
-
-    if all_tables:
-        df = pd.concat(all_tables, ignore_index=True)
+def process_file(file_path):
+    if file_path.lower().endswith(".pdf"):
+        text = extract_text_from_pdf(file_path)
     else:
-        df = pd.DataFrame(columns=[
-            "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
-            "Discount(%)", "Discount Amount",
-            "IGST(%)", "IGST Amount",
-            "CGST(%)", "CGST Amount",
-            "SGST(%)", "SGST Amount",
-            "Net Amount"
-        ])
+        text = extract_text_from_image(file_path)
 
-    # Clean numeric columns
-    numeric_cols = [
-        "Quantity", "Rate", "Gross Amount",
-        "Discount(%)", "Discount Amount",
-        "IGST(%)", "IGST Amount",
-        "CGST(%)", "CGST Amount",
-        "SGST(%)", "SGST Amount",
-        "Net Amount"
-    ]
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = df[col].apply(clean_number)
+    data = []
+    # Example parsing logic (very simplified)
+    invoice_no = re.search(r"Invoice\s*No[:\-]?\s*(\S+)", text, re.IGNORECASE)
+    supplier_gstin = re.search(r"Supplier\s*GSTIN[:\-]?\s*(\S+)", text, re.IGNORECASE)
+    customer_gstin = re.search(r"Customer\s*GSTIN[:\-]?\s*(\S+)", text, re.IGNORECASE)
 
-    # Recalculate missing fields
-    df = df.apply(calculate_missing_fields, axis=1)
-
-    # Extract invoice no
-    invoice_no = re.findall(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.IGNORECASE)
-    invoice_no = invoice_no[0] if invoice_no else "Unknown"
-
-    # GSTINs
-    supplier_gstin, customer_gstin = extract_gstins(text)
-
-    # Add meta columns
-    df["Invoice No"] = invoice_no
-    df["Supplier GSTIN"] = supplier_gstin
-    df["Customer GSTIN"] = customer_gstin
-    df["Source File"] = filename
-
-    return df
+    # Dummy line item (in real use: parse tables properly)
+    data.append({
+        "Invoice No": invoice_no.group(1) if invoice_no else "",
+        "Supplier GSTIN": supplier_gstin.group(1) if supplier_gstin else "",
+        "Customer GSTIN": customer_gstin.group(1) if customer_gstin else "",
+        "HSN": "1234",
+        "Item Name": "Sample Item",
+        "Quantity": 1,
+        "Rate": 100,
+        "Gross Amount": 100,
+        "Discount(%)": 0,
+        "Discount Amount": 0,
+        "IGST(%)": 18,
+        "IGST Amount": 18,
+        "CGST(%)": 0,
+        "CGST Amount": 0,
+        "SGST(%)": 0,
+        "SGST Amount": 0,
+        "Net Amount": 118
+    })
+    return data

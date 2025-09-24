@@ -1,8 +1,6 @@
 streamlit
 pandas
-pdfplumber
 pytesseract
-pdf2image
-Pillow
+pillow
+PyMuPDF
 openpyxl
-reportlab
