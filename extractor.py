@@ -54,24 +54,27 @@ def parse_invoice(pdf, text, source_file):
                 # Detect if row has HSN (4+ digit code) → likely an item row
                 if any(re.match(r"\d{4,}", c) for c in clean_row):
                     hsn = next((c for c in clean_row if re.match(r"\d{4,}", c)), "")
+
+                    # Try Qty, Rate, Gross
                     qty = safe_float(next((c for c in clean_row if re.match(r"^\d+(\.\d+)?$", c)), 0))
                     rate = 0.0
                     gross = 0.0
 
-                    # try to map Rate and Gross if table has enough cols
                     if len(clean_row) >= 5:
                         rate = safe_float(clean_row[-3])
                         gross = safe_float(clean_row[-2])
 
-                    gross = qty * rate if not gross else gross
+                    if not gross:
+                        gross = qty * rate
 
                     # ------------------------
                     # Discounts
                     # ------------------------
                     disc_percent = ""
                     disc_amount = ""
+
                     for c in clean_row:
-                        if "%" in c:
+                        if "%" in c and "GST" not in c.upper():
                             val = safe_float(c.replace("%", ""))
                             disc_percent = val
                             disc_amount = round((gross * val) / 100, 2)
@@ -116,13 +119,26 @@ def parse_invoice(pdf, text, source_file):
                                 sgst_percent = round((sgst_amount / gross_after_disc) * 100, 2) if gross_after_disc else ""
 
                     # ------------------------
-                    # Net Amount
+                    # Net Amount (check if present directly)
                     # ------------------------
                     net_amount = gross_after_disc + safe_float(igst_amount) + safe_float(cgst_amount) + safe_float(sgst_amount)
 
-                    # Item Name (best guess: text between HSN and Qty)
-                    item_name = " ".join(clean_row[1:3]) if len(clean_row) > 3 else "Item"
+                    net_match = [c for c in clean_row if re.search(r"\d+\.\d{2}", c)]
+                    if net_match:
+                        last_val = safe_float(net_match[-1])
+                        if last_val > 0 and abs(last_val - net_amount) > 1:
+                            net_amount = last_val
 
+                    # Item Name = text after HSN up to Qty
+                    try:
+                        hsn_index = clean_row.index(hsn)
+                        item_name = " ".join(clean_row[hsn_index+1:-3]) if len(clean_row) > hsn_index+3 else "Item"
+                    except:
+                        item_name = "Item"
+
+                    # ------------------------
+                    # Append row
+                    # ------------------------
                     rows.append([
                         invoice_no,
                         supplier_gstin,
