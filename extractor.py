@@ -22,11 +22,7 @@ EXPECTED_COLUMNS = [
     "Net Amount",
 ]
 
-def normalize_headers(headers):
-    """Map detected headers to exact expected names"""
-    # header_mapping.py
-# Maps all possible variations of invoice headers to standardized names
-
+# Standard header mapping
 HEADER_MAP = {
     # Invoice No
     "invoice no": "Invoice No",
@@ -111,13 +107,13 @@ HEADER_MAP = {
     "line total": "Gross Amount",
 
     # Discount %
-    "discount%": "Discount%",
-    "discount": "Discount%",
-    "disc%": "Discount%",
-    "rebate %": "Discount%",
-    "offer %": "Discount%",
-    "deduction %": "Discount%",
-    "allowance %": "Discount%",
+    "discount%": "Discount(%)",
+    "discount": "Discount(%)",
+    "disc%": "Discount(%)",
+    "rebate %": "Discount(%)",
+    "offer %": "Discount(%)",
+    "deduction %": "Discount(%)",
+    "allowance %": "Discount(%)",
 
     # Discount Amount
     "discount amount": "Discount Amount",
@@ -130,11 +126,11 @@ HEADER_MAP = {
     "total discount": "Discount Amount",
 
     # IGST %
-    "igst%": "IGST%",
-    "igst rate %": "IGST%",
-    "integrated tax %": "IGST%",
-    "igst duty %": "IGST%",
-    "int. gst %": "IGST%",
+    "igst%": "IGST(%)",
+    "igst rate %": "IGST(%)",
+    "integrated tax %": "IGST(%)",
+    "igst duty %": "IGST(%)",
+    "int. gst %": "IGST(%)",
 
     # IGST Amount
     "igst amount": "IGST Amount",
@@ -143,14 +139,14 @@ HEADER_MAP = {
     "igst duty amount": "IGST Amount",
     "igst charges": "IGST Amount",
     "igst total": "IGST Amount",
-    "Igst": "IGST Amount",
+    "igst": "IGST Amount",
 
     # CGST %
-    "cgst%": "CGST%",
-    "cgst rate %": "CGST%",
-    "central tax %": "CGST%",
-    "c. gst %": "CGST%",
-    "central gst rate": "CGST%",
+    "cgst%": "CGST(%)",
+    "cgst rate %": "CGST(%)",
+    "central tax %": "CGST(%)",
+    "c. gst %": "CGST(%)",
+    "central gst rate": "CGST(%)",
 
     # CGST Amount
     "cgst amount": "CGST Amount",
@@ -162,11 +158,11 @@ HEADER_MAP = {
     "cgst": "CGST Amount",
 
     # SGST %
-    "sgst%": "SGST%",
-    "sgst rate %": "SGST%",
-    "state tax %": "SGST%",
-    "s. gst %": "SGST%",
-    "state gst rate": "SGST%",
+    "sgst%": "SGST(%)",
+    "sgst rate %": "SGST(%)",
+    "state tax %": "SGST(%)",
+    "s. gst %": "SGST(%)",
+    "state gst rate": "SGST(%)",
 
     # SGST Amount
     "sgst amount": "SGST Amount",
@@ -186,13 +182,18 @@ HEADER_MAP = {
     "final total": "Net Amount",
 }
 
-    return [header_map.get(h.lower().strip(), h.strip()) for h in headers]
+
+def normalize_headers(headers):
+    """Map detected headers to exact expected names"""
+    return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
+
 
 def clean_numeric(value):
     """Remove unwanted symbols from numbers (₹, %, commas, etc.)"""
     if isinstance(value, str):
-        value = re.sub(r"[^\d.\-]", "", value)  # keep only numbers, dot, minus
+        value = re.sub(r"[^\d.\-]", "", value)
     return value
+
 
 def parse_invoice(pdf, text, filename):
     """Extracts invoice table data and adds Invoice No, GSTIN, and Source File"""
