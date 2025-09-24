@@ -5,73 +5,40 @@ import re
 # Header Normalization
 # ----------------------------
 def normalize_headers(headers):
-    """Map invoice headers to standard names"""
     header_map = {
-        # Invoice metadata
-        "invoice no": "Invoice No",
-        "inv no": "Invoice No",
-        "invoice number": "Invoice No",
-        "bill no": "Invoice No",
+        "invoice no": "Invoice No", "inv no": "Invoice No",
+        "invoice number": "Invoice No", "bill no": "Invoice No",
 
-        "supplier gstin": "Supplier GSTIN",
-        "seller gstin": "Supplier GSTIN",
+        "supplier gstin": "Supplier GSTIN", "seller gstin": "Supplier GSTIN",
         "our gstin": "Supplier GSTIN",
 
-        "customer gstin": "Customer GSTIN",
-        "buyer gstin": "Customer GSTIN",
+        "customer gstin": "Customer GSTIN", "buyer gstin": "Customer GSTIN",
         "recipient gstin": "Customer GSTIN",
 
-        "hsn code": "HSN",
-        "hsn": "HSN",
+        "hsn code": "HSN", "hsn": "HSN",
 
-        "item": "Item Name",
-        "description": "Item Name",
-        "product": "Item Name",
-        "item name": "Item Name",
+        "item": "Item Name", "description": "Item Name",
+        "product": "Item Name", "item name": "Item Name",
 
-        "qty": "Quantity",
-        "quantity": "Quantity",
-        "qnty": "Quantity",
+        "qty": "Quantity", "quantity": "Quantity", "qnty": "Quantity",
 
-        "rate": "Rate",
-        "price": "Rate",
-        "unit price": "Rate",
+        "rate": "Rate", "price": "Rate", "unit price": "Rate",
 
-        "amount": "Gross Amount",
-        "gross": "Gross Amount",
-        "gross amount": "Gross Amount",
-        "taxable value": "Gross Amount",
+        "amount": "Gross Amount", "gross": "Gross Amount",
+        "gross amount": "Gross Amount", "taxable value": "Gross Amount",
 
-        # Discount
-        "discount": "Discount(%)",
-        "discount%": "Discount(%)",
-        "disc%": "Discount(%)",
-        "disc amount": "Discount Amount",
+        "discount": "Discount(%)", "discount%": "Discount(%)",
+        "disc%": "Discount(%)", "disc amount": "Discount Amount",
         "discount amount": "Discount Amount",
 
-        # IGST
-        "igst": "IGST(%)",
-        "igst%": "IGST(%)",
-        "igst amount": "IGST Amount",
+        "igst": "IGST(%)", "igst%": "IGST(%)", "igst amount": "IGST Amount",
+        "cgst": "CGST(%)", "cgst%": "CGST(%)", "cgst amount": "CGST Amount",
+        "sgst": "SGST(%)", "sgst%": "SGST(%)", "sgst amount": "SGST Amount",
 
-        # CGST
-        "cgst": "CGST(%)",
-        "cgst%": "CGST(%)",
-        "cgst amount": "CGST Amount",
-
-        # SGST
-        "sgst": "SGST(%)",
-        "sgst%": "SGST(%)",
-        "sgst amount": "SGST Amount",
-
-        # Net amount
-        "net amount": "Net Amount",
-        "total": "Net Amount",
-        "invoice total": "Net Amount",
-        "grand total": "Net Amount",
+        "net amount": "Net Amount", "total": "Net Amount",
+        "invoice total": "Net Amount", "grand total": "Net Amount",
         "total amount": "Net Amount",
     }
-
     normalized = []
     for h in headers:
         if not h:
@@ -81,30 +48,23 @@ def normalize_headers(headers):
         normalized.append(header_map.get(h_clean, h.strip()))
     return normalized
 
-
 # ----------------------------
 # Data Cleaning
 # ----------------------------
 def clean_number(value):
-    """Remove symbols and convert to float if possible"""
-    if pd.isna(value):
-        return None
+    if pd.isna(value): return None
     if isinstance(value, str):
-        # remove everything except digits, dot, minus
         value = re.sub(r"[^\d.\-]", "", value)
     try:
         return float(value) if value != "" else None
     except:
         return None
 
-
 # ----------------------------
 # Auto-calculation
 # ----------------------------
 def calculate_missing_fields(row):
-    """Auto-calc % or Amount for Discount, IGST, CGST, SGST"""
     gross = row.get("Gross Amount")
-
     if gross:
         # Discount
         if row.get("Discount(%)") and not row.get("Discount Amount"):
@@ -116,11 +76,8 @@ def calculate_missing_fields(row):
         if row.get("IGST(%)") and not row.get("IGST Amount"):
             row["IGST Amount"] = gross * row["IGST(%)"] / 100
         elif row.get("IGST Amount") and not row.get("IGST(%)"):
-            # If GST value is not percentage → treat as amount
             if row["IGST Amount"] <= gross:
                 row["IGST(%)"] = (row["IGST Amount"] / gross) * 100
-            else:
-                row["IGST(%)"] = None  # large number = already amount
 
         # CGST
         if row.get("CGST(%)") and not row.get("CGST Amount"):
@@ -128,8 +85,6 @@ def calculate_missing_fields(row):
         elif row.get("CGST Amount") and not row.get("CGST(%)"):
             if row["CGST Amount"] <= gross:
                 row["CGST(%)"] = (row["CGST Amount"] / gross) * 100
-            else:
-                row["CGST(%)"] = None
 
         # SGST
         if row.get("SGST(%)") and not row.get("SGST Amount"):
@@ -137,44 +92,31 @@ def calculate_missing_fields(row):
         elif row.get("SGST Amount") and not row.get("SGST(%)"):
             if row["SGST Amount"] <= gross:
                 row["SGST(%)"] = (row["SGST Amount"] / gross) * 100
-            else:
-                row["SGST(%)"] = None
 
-        # Net Amount
+        # Net
         calc_net = gross - (row.get("Discount Amount") or 0) \
                    + (row.get("IGST Amount") or 0) \
                    + (row.get("CGST Amount") or 0) \
                    + (row.get("SGST Amount") or 0)
         if not row.get("Net Amount"):
             row["Net Amount"] = calc_net
-
     return row
-
 
 # ----------------------------
 # GSTIN Extraction
 # ----------------------------
 def extract_gstins(text):
-    """Extract Supplier & Customer GSTIN from text"""
     gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[0-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
-    supplier_gstin = "Unknown"
-    customer_gstin = "Unknown"
-
-    if len(gstins) == 1:
-        supplier_gstin = gstins[0]
-    elif len(gstins) >= 2:
-        supplier_gstin = gstins[0]
-        customer_gstin = gstins[1]
-
+    supplier_gstin, customer_gstin = "Unknown", "Unknown"
+    if len(gstins) == 1: supplier_gstin = gstins[0]
+    elif len(gstins) >= 2: supplier_gstin, customer_gstin = gstins[0], gstins[1]
     return supplier_gstin, customer_gstin
 
-
 # ----------------------------
-# Main Parse Function
+# Main Parse
 # ----------------------------
 def parse_invoice(pdf, text, filename):
     all_tables = []
-
     for page in pdf.pages:
         tables = page.extract_tables()
         for table in tables:
@@ -194,7 +136,6 @@ def parse_invoice(pdf, text, filename):
             "Net Amount"
         ])
 
-    # Clean numeric columns
     numeric_cols = [
         "Quantity", "Rate", "Gross Amount",
         "Discount(%)", "Discount Amount",
@@ -207,17 +148,13 @@ def parse_invoice(pdf, text, filename):
         if col in df.columns:
             df[col] = df[col].apply(clean_number)
 
-    # Recalculate missing fields
     df = df.apply(calculate_missing_fields, axis=1)
 
-    # Extract invoice no
     invoice_no = re.findall(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.IGNORECASE)
     invoice_no = invoice_no[0] if invoice_no else "Unknown"
 
-    # GSTINs
     supplier_gstin, customer_gstin = extract_gstins(text)
 
-    # Add meta columns
     df["Invoice No"] = invoice_no
     df["Supplier GSTIN"] = supplier_gstin
     df["Customer GSTIN"] = customer_gstin
