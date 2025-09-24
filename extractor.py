@@ -1,28 +1,6 @@
 import pandas as pd
-import re
 
-EXPECTED_COLUMNS = [
-    "Invoice No",
-    "Supplier GSTIN",
-    "Customer GSTIN",
-    "Source File",
-    "HSN",
-    "Item Name",
-    "Quantity",
-    "Rate",
-    "Gross Amount",
-    "Discount(%)",
-    "Discount Amount",
-    "IGST(%)",
-    "IGST Amount",
-    "CGST(%)",
-    "CGST Amount",
-    "SGST(%)",
-    "SGST Amount",
-    "Net Amount",
-]
-
-# Standard header mapping
+# Header mapping dictionary
 HEADER_MAP = {
     # Invoice No
     "invoice no": "Invoice No",
@@ -101,20 +79,19 @@ HEADER_MAP = {
     # Gross Amount
     "gross amount": "Gross Amount",
     "total value": "Gross Amount",
-    "taxable value": "Gross Amount",
     "total before tax": "Gross Amount",
     "amount before tax": "Gross Amount",
     "subtotal": "Gross Amount",
     "line total": "Gross Amount",
 
     # Discount %
-    "discount%": "Discount(%)",
-    "discount": "Discount(%)",
-    "disc%": "Discount(%)",
-    "rebate %": "Discount(%)",
-    "offer %": "Discount(%)",
-    "deduction %": "Discount(%)",
-    "allowance %": "Discount(%)",
+    "discount%": "Discount%",
+    "discount": "Discount%",
+    "disc%": "Discount%",
+    "rebate %": "Discount%",
+    "offer %": "Discount%",
+    "deduction %": "Discount%",
+    "allowance %": "Discount%",
 
     # Discount Amount
     "discount amount": "Discount Amount",
@@ -127,11 +104,11 @@ HEADER_MAP = {
     "total discount": "Discount Amount",
 
     # IGST %
-    "igst%": "IGST(%)",
-    "igst rate %": "IGST(%)",
-    "integrated tax %": "IGST(%)",
-    "igst duty %": "IGST(%)",
-    "int. gst %": "IGST(%)",
+    "igst%": "IGST%",
+    "igst rate %": "IGST%",
+    "integrated tax %": "IGST%",
+    "igst duty %": "IGST%",
+    "int. gst %": "IGST%",
 
     # IGST Amount
     "igst amount": "IGST Amount",
@@ -143,11 +120,11 @@ HEADER_MAP = {
     "igst": "IGST Amount",
 
     # CGST %
-    "cgst%": "CGST(%)",
-    "cgst rate %": "CGST(%)",
-    "central tax %": "CGST(%)",
-    "c. gst %": "CGST(%)",
-    "central gst rate": "CGST(%)",
+    "cgst%": "CGST%",
+    "cgst rate %": "CGST%",
+    "central tax %": "CGST%",
+    "c. gst %": "CGST%",
+    "central gst rate": "CGST%",
 
     # CGST Amount
     "cgst amount": "CGST Amount",
@@ -159,11 +136,11 @@ HEADER_MAP = {
     "cgst": "CGST Amount",
 
     # SGST %
-    "sgst%": "SGST(%)",
-    "sgst rate %": "SGST(%)",
-    "state tax %": "SGST(%)",
-    "s. gst %": "SGST(%)",
-    "state gst rate": "SGST(%)",
+    "sgst%": "SGST%",
+    "sgst rate %": "SGST%",
+    "state tax %": "SGST%",
+    "s. gst %": "SGST%",
+    "state gst rate": "SGST%",
 
     # SGST Amount
     "sgst amount": "SGST Amount",
@@ -185,59 +162,65 @@ HEADER_MAP = {
 
 
 def normalize_headers(headers):
-    """Map detected headers to exact expected names"""
+    """Normalize headers using HEADER_MAP"""
     return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
 
 
-def clean_numeric(value):
-    """Remove unwanted symbols from numbers (₹, %, commas, etc.)"""
-    if isinstance(value, str):
-        value = re.sub(r"[^\d.\-]", "", value)
-    return value
+def parse_invoice(pdf, text, source_file=None):
+    """
+    Parse invoice PDF (with extracted text + tables).
+    pdf  -> pdfplumber object
+    text -> full extracted text
+    source_file -> file name
+    """
+    data = []
 
-
-def parse_invoice(pdf, text, filename):
-    """Extracts invoice table data and adds Invoice No, GSTIN, and Source File"""
-    all_tables = []
-
+    # Extract tables from PDF
     for page in pdf.pages:
         tables = page.extract_tables()
         for table in tables:
-            if table and len(table) > 1:
-                df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
-                all_tables.append(df)
+            if not table:
+                continue
 
-    if all_tables:
-        df = pd.concat(all_tables, ignore_index=True)
-    else:
-        df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+            headers = normalize_headers(table[0])  # first row = headers
+            rows = table[1:]
 
-    # Clean numeric values
-    for col in df.columns:
-        if any(key in col.lower() for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net"]):
-            df[col] = df[col].apply(clean_numeric)
+            for row in rows:
+                if any(cell for cell in row):  # skip empty rows
+                    record = dict(zip(headers, row))
+                    if source_file:
+                        record["Source File"] = source_file
+                    data.append(record)
 
-    # Extract Invoice No
-    invoice_no = re.findall(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.IGNORECASE)
-    invoice_no = invoice_no[0] if invoice_no else "Unknown"
+    # Build DataFrame
+    df = pd.DataFrame(data)
 
-    # Extract Supplier & Customer GSTIN
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", text)
-    supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
-    customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
-
-    # Add Info columns
-    df["Invoice No"] = invoice_no
-    df["Supplier GSTIN"] = supplier_gstin
-    df["Customer GSTIN"] = customer_gstin
-    df["Source File"] = filename
-
-    # Ensure all expected columns exist
-    for col in EXPECTED_COLUMNS:
+    # Ensure all required columns exist
+    required_columns = [
+        "Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File",
+        "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
+        "Discount%", "Discount Amount", "IGST%", "IGST Amount",
+        "CGST%", "CGST Amount", "SGST%", "SGST Amount", "Net Amount"
+    ]
+    for col in required_columns:
         if col not in df.columns:
-            df[col] = ""
+            df[col] = None
+
+    # Convert numeric columns safely
+    num_cols = ["Gross Amount", "Discount Amount", "IGST Amount", "CGST Amount", "SGST Amount"]
+    for col in num_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Calculate Net Amount
+    df["Net Amount"] = (
+        df["Gross Amount"]
+        - df["Discount Amount"]
+        - df["IGST Amount"]
+        - df["CGST Amount"]
+        - df["SGST Amount"]
+    )
 
     # Reorder columns
-    df = df[EXPECTED_COLUMNS]
+    df = df[required_columns]
 
     return df
