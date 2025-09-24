@@ -1,28 +1,26 @@
-# GST Invoice Extractor 📑
+# 📑 Invoice Extractor
 
-A Streamlit-based tool to extract **invoice line items** from PDF invoices and export them into **CSV, Excel, and PDF**.
+A Streamlit app to extract **structured invoice data** from PDF invoices and export results to **CSV, Excel, or PDF**.
+
+---
 
 ## 🚀 Features
-- Upload **one or multiple invoice PDFs**
-- Extract fields:
-  - Invoice No  
-  - Supplier GSTIN  
-  - Customer GSTIN  
-  - Source File  
-  - HSN  
-  - Item Name  
-  - Quantity  
-  - Rate  
-  - Gross Amount  
-  - Discount(%) / Discount Amount  
-  - IGST(%), IGST Amount  
-  - CGST(%), CGST Amount  
-  - SGST(%), SGST Amount  
-  - Net Amount  
-- Auto-calculates GST % or Amount if missing
-- Normalizes invoice headers (`Bill No` → `Invoice No`, `Taxable Value` → `Gross Amount`, etc.)
-- Export final data to **CSV, Excel, PDF**
+- Upload one or multiple PDF invoices
+- Extracts tables directly from invoices
+- Normalizes headers (HSN, Item, Quantity, Rate, Amounts, Taxes, etc.)
+- Extracts **Invoice No, Supplier GSTIN, Customer GSTIN**
+- Adds **Source File** column (if multiple PDFs uploaded)
+- Cleans numeric fields (removes ₹, %, commas)
+- Export results to:
+  - CSV
+  - Excel
+  - PDF
 
-## 📦 Installation
+---
+
+## ⚙️ Setup & Run
 ```bash
+git clone https://github.com/your-username/invoice-extractor.git
+cd invoice-extractor
 pip install -r requirements.txt
+streamlit run app.py
