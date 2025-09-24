@@ -1,6 +1,5 @@
 streamlit
 pandas
-pytesseract
-pillow
-PyMuPDF
+pdfplumber
 openpyxl
+reportlab

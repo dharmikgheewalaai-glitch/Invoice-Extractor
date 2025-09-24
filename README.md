@@ -1,26 +1,27 @@
-# Invoice Extractor
+# GST Invoice Extractor 📑
 
-A Streamlit app to extract invoice data (HSN, GST, quantities, taxes, totals, etc.)
-from **PDF invoices** (text & scanned) and **image invoices** (JPG/PNG).
-Exports are available in **CSV, Excel, and PDF**.
-
----
+A Streamlit-based tool to extract **invoice line items** from PDF invoices and export them into **CSV, Excel, and PDF**.
 
 ## 🚀 Features
-- Extracts:
-  - Invoice No
-  - Supplier GSTIN
-  - Customer GSTIN
-  - Item details (HSN, Quantity, Rate, Tax, etc.)
-- Handles:
-  - Normal PDFs with text
-  - Scanned PDFs (OCR using Tesseract)
-  - Image invoices (JPG, PNG)
-- Auto-calculates missing % or Amount for Discount/IGST/CGST/SGST
-- If only Gross + Net are given, GST % is derived automatically
-- Download results as CSV, Excel, or PDF
-
----
+- Upload **one or multiple invoice PDFs**
+- Extract fields:
+  - Invoice No  
+  - Supplier GSTIN  
+  - Customer GSTIN  
+  - Source File  
+  - HSN  
+  - Item Name  
+  - Quantity  
+  - Rate  
+  - Gross Amount  
+  - Discount(%) / Discount Amount  
+  - IGST(%), IGST Amount  
+  - CGST(%), CGST Amount  
+  - SGST(%), SGST Amount  
+  - Net Amount  
+- Auto-calculates GST % or Amount if missing
+- Normalizes invoice headers (`Bill No` → `Invoice No`, `Taxable Value` → `Gross Amount`, etc.)
+- Export final data to **CSV, Excel, PDF**
 
 ## 📦 Installation
 ```bash
