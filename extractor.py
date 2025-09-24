@@ -39,17 +39,10 @@ def normalize_headers(headers):
         "invoice total": "Net Amount", "grand total": "Net Amount",
         "total amount": "Net Amount",
     }
-    normalized = []
-    for h in headers:
-        if not h:
-            normalized.append("Unknown")
-            continue
-        h_clean = h.lower().strip().replace(":", "")
-        normalized.append(header_map.get(h_clean, h.strip()))
-    return normalized
+    return [header_map.get(h.lower().strip().replace(":", ""), h.strip()) for h in headers]
 
 # ----------------------------
-# Data Cleaning
+# Clean numbers
 # ----------------------------
 def clean_number(value):
     if pd.isna(value): 
@@ -62,29 +55,43 @@ def clean_number(value):
         return None
 
 # ----------------------------
+# GST Parsing from text
+# ----------------------------
+def extract_gst_from_text(value):
+    """Extract GST % or GST Amount from text like 'CGST 9% 180' or 'IGST 540'"""
+    if not isinstance(value, str):
+        return None, None
+    perc_match = re.search(r"(\d+(\.\d+)?)\s*%", value)
+    amt_match = re.search(r"(\d+(\.\d+)?)", value)
+
+    perc = float(perc_match.group(1)) if perc_match else None
+    amt = None
+    if perc is None and amt_match:
+        amt = float(amt_match.group(1))
+    return perc, amt
+
+# ----------------------------
 # Auto-calculation
 # ----------------------------
 def calculate_missing_fields(row):
     gross = row.get("Gross Amount")
 
-    # ✅ Discount calculation
+    # Discount
     if gross:
         if row.get("Discount(%)") and not row.get("Discount Amount"):
             row["Discount Amount"] = gross * row["Discount(%)"] / 100
         elif row.get("Discount Amount") and not row.get("Discount(%)"):
             row["Discount(%)"] = (row["Discount Amount"] / gross) * 100
 
-    # ✅ GST calculation
+    # GST
     for tax in ["IGST", "CGST", "SGST"]:
-        perc_col = f"{tax}(%)"
-        amt_col = f"{tax} Amount"
-
+        perc_col, amt_col = f"{tax}(%)", f"{tax} Amount"
         if gross:
             if row.get(perc_col) and not row.get(amt_col):
                 row[amt_col] = gross * row[perc_col] / 100
-            # ❌ Do not calculate % if only amount is given → leave % blank
+            # if only amount is present → leave % blank
 
-    # ✅ Net Amount calculation
+    # Net Amount
     if gross:
         calc_net = gross - (row.get("Discount Amount") or 0) \
                    + (row.get("IGST Amount") or 0) \
@@ -93,6 +100,16 @@ def calculate_missing_fields(row):
         if not row.get("Net Amount"):
             row["Net Amount"] = calc_net
     return row
+
+# ----------------------------
+# HSN Extraction
+# ----------------------------
+def extract_hsn(value):
+    """Extract only numeric HSN (4–8 digits)."""
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"\b\d{4,8}\b", value)
+    return match.group(0) if match else None
 
 # ----------------------------
 # GSTIN Extraction
@@ -107,17 +124,7 @@ def extract_gstins(text):
     return supplier_gstin, customer_gstin
 
 # ----------------------------
-# HSN Extraction
-# ----------------------------
-def extract_hsn(value):
-    """Extract only numeric HSN (4–8 digits)."""
-    if not isinstance(value, str):
-        return None
-    match = re.search(r"\b\d{4,8}\b", value)
-    return match.group(0) if match else None
-
-# ----------------------------
-# Main Parse
+# Main Parser
 # ----------------------------
 def parse_invoice(pdf, text, filename):
     all_tables = []
@@ -153,13 +160,25 @@ def parse_invoice(pdf, text, filename):
         if col in df.columns:
             df[col] = df[col].apply(clean_number)
 
-    # ✅ Extract only valid HSN codes
+    # ✅ Fix HSN
     if "HSN" in df.columns:
         df["HSN"] = df["HSN"].apply(extract_hsn)
+    elif "Item Name" in df.columns:
+        df["HSN"] = df["Item Name"].apply(extract_hsn)
     else:
         df["HSN"] = None
 
-    # Recalculate dependent fields
+    # ✅ Fix GST (if text form instead of numeric)
+    for tax in ["IGST", "CGST", "SGST"]:
+        perc_col, amt_col = f"{tax}(%)", f"{tax} Amount"
+        if perc_col in df.columns and amt_col in df.columns:
+            for idx, val in df[perc_col].items():
+                if isinstance(val, str):
+                    perc, amt = extract_gst_from_text(val)
+                    if perc: df.at[idx, perc_col] = perc
+                    if amt: df.at[idx, amt_col] = amt
+
+    # Recalculate
     df = df.apply(calculate_missing_fields, axis=1)
 
     # Invoice No
@@ -174,5 +193,20 @@ def parse_invoice(pdf, text, filename):
     df["Supplier GSTIN"] = supplier_gstin
     df["Customer GSTIN"] = customer_gstin
     df["Source File"] = filename
+
+    # ✅ Enforce final column order
+    final_cols = [
+        "Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File",
+        "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
+        "Discount(%)", "Discount Amount",
+        "IGST(%)", "IGST Amount",
+        "CGST(%)", "CGST Amount",
+        "SGST(%)", "SGST Amount",
+        "Net Amount"
+    ]
+    for col in final_cols:
+        if col not in df.columns:
+            df[col] = None
+    df = df[final_cols]
 
     return df
