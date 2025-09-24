@@ -101,6 +101,7 @@ HEADER_MAP = {
     # Gross Amount
     "gross amount": "Gross Amount",
     "total value": "Gross Amount",
+    "taxable value": "Gross Amount",
     "total before tax": "Gross Amount",
     "amount before tax": "Gross Amount",
     "subtotal": "Gross Amount",
