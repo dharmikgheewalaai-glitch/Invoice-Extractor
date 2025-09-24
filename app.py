@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 from extractor import parse_invoice
+from io import BytesIO
 
 st.set_page_config(page_title="Invoice Extractor", layout="wide")
 st.title("Invoice Extractor")
@@ -27,19 +28,41 @@ if uploaded_files:
     st.subheader("Extracted Invoice Data")
     st.dataframe(final_df, use_container_width=True)
 
-    # Downloads
-    st.download_button(
-        "⬇ Download as Excel",
-        final_df.to_excel("invoices.xlsx", index=False),
-        file_name="invoices.xlsx",
-    )
-    st.download_button(
-        "⬇ Download as CSV",
-        final_df.to_csv(index=False).encode("utf-8"),
-        file_name="invoices.csv",
-    )
-    st.download_button(
-        "⬇ Download as PDF",
-        final_df.to_string(index=False).encode("utf-8"),
-        file_name="invoices.txt",  # exporting as txt (simple), can replace with reportlab pdf
-    )
+    # ----------------------------
+    # Downloads in one row
+    # ----------------------------
+    # Excel buffer
+    excel_buffer = BytesIO()
+    final_df.to_excel(excel_buffer, index=False, engine="openpyxl")
+
+    # CSV data
+    csv_data = final_df.to_csv(index=False).encode("utf-8")
+
+    # TXT fallback (instead of PDF)
+    txt_data = final_df.to_string(index=False).encode("utf-8")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.download_button(
+            "⬇ Excel",
+            data=excel_buffer.getvalue(),
+            file_name="invoices.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    with col2:
+        st.download_button(
+            "⬇ CSV",
+            data=csv_data,
+            file_name="invoices.csv",
+            mime="text/csv",
+        )
+
+    with col3:
+        st.download_button(
+            "⬇ TXT",
+            data=txt_data,
+            file_name="invoices.txt",
+            mime="text/plain",
+        )
