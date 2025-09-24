@@ -1,14 +1,15 @@
-# 📑 PDF Invoice Extractor
+#Invoice Extractor
 
-A Streamlit web app to extract invoice data from **PDF invoices** and export results to **CSV, Excel, or PDF**.
+A Streamlit web app to extract structured data from **PDF invoices** and export results to **CSV, Excel, or PDF**.
 
 ---
 
 ## 🚀 Features
-- Upload **PDF invoices**
+- Upload **one or multiple PDF invoices**
 - Extract key fields:
-  - HSN Number
   - Invoice Number
+  - GSTIN
+  - HSN
   - Item Name
   - Quantity
   - Rate
@@ -16,6 +17,7 @@ A Streamlit web app to extract invoice data from **PDF invoices** and export res
   - Discount (%) & Amount
   - IGST/CGST/SGST (%) & Amount
   - Net Amount
+- Combine results from multiple invoices into a single table
 - Export results to:
   - CSV
   - Excel
@@ -23,4 +25,8 @@ A Streamlit web app to extract invoice data from **PDF invoices** and export res
 
 ---
 
-## 📂 Project Structure
+## ⚙️ Setup & Run
+1. Clone repo:
+   ```bash
+   git clone https://github.com/your-username/invoice-extractor.git
+   cd invoice-extractor
