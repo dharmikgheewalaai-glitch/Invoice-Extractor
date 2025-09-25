@@ -1,3 +1,4 @@
+import pdfplumber
 import pandas as pd
 import re
 
@@ -11,19 +12,17 @@ EXPECTED_COLUMNS = [
     "Quantity",
     "Rate",
     "Gross Amount",
-    "Discount(%)",
+    "Discount%",
     "Discount Amount",
-    "IGST(%)",
+    "IGST%",
     "IGST Amount",
-    "CGST(%)",
+    "CGST%",
     "CGST Amount",
-    "SGST(%)",
+    "SGST%",
     "SGST Amount",
     "Net Amount",
 ]
 
-def normalize_headers(headers):
-    """Map detected headers to exact expected names"""
 HEADER_MAP = {
     # Invoice No
     "invoice no": "Invoice No",
@@ -32,7 +31,6 @@ HEADER_MAP = {
     "bill no": "Invoice No",
     "voucher no": "Invoice No",
     "document no": "Invoice No",
-
     # Supplier GSTIN
     "supplier gstin": "Supplier GSTIN",
     "seller gstin": "Supplier GSTIN",
@@ -40,7 +38,6 @@ HEADER_MAP = {
     "supplier gst no": "Supplier GSTIN",
     "seller tax id": "Supplier GSTIN",
     "vendor tax id": "Supplier GSTIN",
-
     # Customer GSTIN
     "customer gstin": "Customer GSTIN",
     "buyer gstin": "Customer GSTIN",
@@ -48,7 +45,6 @@ HEADER_MAP = {
     "recipient gstin": "Customer GSTIN",
     "customer gst no": "Customer GSTIN",
     "buyer tax id": "Customer GSTIN",
-
     # Source File
     "source file": "Source File",
     "upload name": "Source File",
@@ -56,7 +52,6 @@ HEADER_MAP = {
     "file reference": "Source File",
     "document source": "Source File",
     "file path": "Source File",
-
     # HSN
     "hsn": "HSN",
     "hsn code": "HSN",
@@ -65,7 +60,6 @@ HEADER_MAP = {
     "hsn classification": "HSN",
     "hsn/sac code": "HSN",
     "harmonized code": "HSN",
-
     # Item Name
     "item": "Item Name",
     "item name": "Item Name",
@@ -78,7 +72,6 @@ HEADER_MAP = {
     "particulars": "Item Name",
     "item description": "Item Name",
     "product details": "Item Name",
-
     # Quantity
     "qty": "Quantity",
     "quantity": "Quantity",
@@ -88,7 +81,6 @@ HEADER_MAP = {
     "pcs": "Quantity",
     "units": "Quantity",
     "order quantity": "Quantity",
-
     # Rate
     "rate": "Rate",
     "price": "Rate",
@@ -98,7 +90,6 @@ HEADER_MAP = {
     "selling price": "Rate",
     "unit value": "Rate",
     "rate per item": "Rate",
-
     # Gross Amount
     "gross amount": "Gross Amount",
     "total value": "Gross Amount",
@@ -106,16 +97,14 @@ HEADER_MAP = {
     "amount before tax": "Gross Amount",
     "subtotal": "Gross Amount",
     "line total": "Gross Amount",
-
     # Discount %
-    "discount%": "Discount(%)",
-    "discount": "Discount(%)",
-    "disc%": "Discount(%)",
-    "rebate %": "Discount(%)",
-    "offer %": "Discount(%)",
-    "deduction %": "Discount(%)",
-    "allowance %": "Discount(%)",
-
+    "discount%": "Discount%",
+    "discount": "Discount%",
+    "disc%": "Discount%",
+    "rebate %": "Discount%",
+    "offer %": "Discount%",
+    "deduction %": "Discount%",
+    "allowance %": "Discount%",
     # Discount Amount
     "discount amount": "Discount Amount",
     "disc amt": "Discount Amount",
@@ -125,14 +114,12 @@ HEADER_MAP = {
     "concession": "Discount Amount",
     "discounted amount": "Discount Amount",
     "total discount": "Discount Amount",
-
     # IGST %
-    "igst%": "IGST(%)",
-    "igst rate %": "IGST(%)",
-    "integrated tax %": "IGST(%)",
-    "igst duty %": "IGST(%)",
-    "int. gst %": "IGST(%)",
-
+    "igst%": "IGST%",
+    "igst rate %": "IGST%",
+    "integrated tax %": "IGST%",
+    "igst duty %": "IGST%",
+    "int. gst %": "IGST%",
     # IGST Amount
     "igst amount": "IGST Amount",
     "igst value": "IGST Amount",
@@ -141,14 +128,12 @@ HEADER_MAP = {
     "igst charges": "IGST Amount",
     "igst total": "IGST Amount",
     "igst": "IGST Amount",
-
     # CGST %
-    "cgst%": "CGST(%)",
-    "cgst rate %": "CGST(%)",
-    "central tax %": "CGST(%)",
-    "c. gst %": "CGST(%)",
-    "central gst rate": "CGST(%)",
-
+    "cgst%": "CGST%",
+    "cgst rate %": "CGST%",
+    "central tax %": "CGST%",
+    "c. gst %": "CGST%",
+    "central gst rate": "CGST%",
     # CGST Amount
     "cgst amount": "CGST Amount",
     "cgst value": "CGST Amount",
@@ -157,14 +142,12 @@ HEADER_MAP = {
     "cgst duty amount": "CGST Amount",
     "cgst total": "CGST Amount",
     "cgst": "CGST Amount",
-
     # SGST %
-    "sgst%": "SGST(%)",
-    "sgst rate %": "SGST(%)",
-    "state tax %": "SGST(%)",
-    "s. gst %": "SGST(%)",
-    "state gst rate": "SGST(%)",
-
+    "sgst%": "SGST%",
+    "sgst rate %": "SGST%",
+    "state tax %": "SGST%",
+    "s. gst %": "SGST%",
+    "state gst rate": "SGST%",
     # SGST Amount
     "sgst amount": "SGST Amount",
     "sgst value": "SGST Amount",
@@ -173,7 +156,6 @@ HEADER_MAP = {
     "sgst duty amount": "SGST Amount",
     "sgst total": "SGST Amount",
     "sgst": "SGST Amount",
-
     # Net Amount
     "net amount": "Net Amount",
     "grand total": "Net Amount",
@@ -182,24 +164,33 @@ HEADER_MAP = {
     "amount due": "Net Amount",
     "final total": "Net Amount",
 }
-    return [header_map.get(h.lower().strip(), h.strip()) for h in headers]
+
+
+def normalize_headers(headers):
+    return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
+
 
 def clean_numeric(value):
     """Remove unwanted symbols from numbers (₹, %, commas, etc.)"""
     if isinstance(value, str):
-        value = re.sub(r"[^\d.\-]", "", value)  # keep only numbers, dot, minus
-    return value
+        value = re.sub(r"[^\d.\-]", "", value)
+    try:
+        return float(value) if value not in ("", None) else 0.0
+    except:
+        return 0.0
 
-def parse_invoice(pdf, text, filename):
+
+def parse_invoice(pdf_path, filename, text=""):
     """Extracts invoice table data and adds Invoice No, GSTIN, and Source File"""
     all_tables = []
 
-    for page in pdf.pages:
-        tables = page.extract_tables()
-        for table in tables:
-            if table and len(table) > 1:
-                df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
-                all_tables.append(df)
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                if table and len(table) > 1:
+                    df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
+                    all_tables.append(df)
 
     if all_tables:
         df = pd.concat(all_tables, ignore_index=True)
@@ -208,7 +199,7 @@ def parse_invoice(pdf, text, filename):
 
     # Clean numeric values
     for col in df.columns:
-        if any(key in col.lower() for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net"]):
+        if any(key in col.lower() for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net", "gross"]):
             df[col] = df[col].apply(clean_numeric)
 
     # Extract Invoice No
@@ -229,7 +220,7 @@ def parse_invoice(pdf, text, filename):
     # Ensure all expected columns exist
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
-            df[col] = ""
+            df[col] = 0.0 if col not in ["Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File", "HSN", "Item Name"] else ""
 
     # Reorder columns
     df = df[EXPECTED_COLUMNS]
