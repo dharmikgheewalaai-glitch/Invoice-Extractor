@@ -1,37 +1,38 @@
 import streamlit as st
+import pandas as pd
 import tempfile
 import os
 from extractor import parse_invoice
 
 st.set_page_config(page_title="Invoice Extractor", layout="wide")
-st.title("Invoice Extractor App")
+
+st.title("📑 Invoice Extractor")
 
 uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
 
 if uploaded_file:
-    # Save uploaded file to a temp file (pdfplumber needs path or file-like object)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        tmp_path = tmp_file.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(uploaded_file.read())
+        tmp_path = tmp.name
 
-    with open(tmp_path, "rb") as f:
-        pdf_bytes = f.read()
+    try:
+        df = parse_invoice(tmp_path, "", uploaded_file.name)
 
-    text = ""  # Optional: OCR / raw text if needed
+        st.subheader("Extracted Invoice Data")
+        st.dataframe(df, use_container_width=True)
 
-    df = parse_invoice(tmp_path, text, uploaded_file.name)
+        # Download as Excel
+        out_path = tmp_path.replace(".pdf", ".xlsx")
+        df.to_excel(out_path, index=False)
 
-    st.subheader("Extracted Invoice Data")
-    st.dataframe(df)
-
-    # Download option
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="Download as CSV",
-        data=csv,
-        file_name="invoice_data.csv",
-        mime="text/csv",
-    )
-
-    # Clean up temp file
-    os.remove(tmp_path)
+        with open(out_path, "rb") as f:
+            st.download_button(
+                "Download as Excel",
+                f,
+                file_name=f"{os.path.splitext(uploaded_file.name)[0]}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+    except Exception as e:
+        st.error(f"❌ Error parsing invoice: {e}")
+    finally:
+        os.unlink(tmp_path)
