@@ -36,75 +36,149 @@ HEADER_MAP = {
     "seller gstin": "Supplier GSTIN",
     "vendor gstin": "Supplier GSTIN",
     "supplier gst no": "Supplier GSTIN",
+    "seller tax id": "Supplier GSTIN",
+    "vendor tax id": "Supplier GSTIN",
 
     # Customer GSTIN
     "customer gstin": "Customer GSTIN",
     "buyer gstin": "Customer GSTIN",
     "client gstin": "Customer GSTIN",
     "recipient gstin": "Customer GSTIN",
+    "customer gst no": "Customer GSTIN",
+    "buyer tax id": "Customer GSTIN",
 
     # Source File
     "source file": "Source File",
     "upload name": "Source File",
+    "source document": "Source File",
+    "file reference": "Source File",
+    "document source": "Source File",
+    "file path": "Source File",
 
     # HSN
     "hsn": "HSN",
     "hsn code": "HSN",
+    "hsn/sac": "HSN",
+    "hsn code no": "HSN",
+    "hsn classification": "HSN",
+    "hsn/sac code": "HSN",
+    "harmonized code": "HSN",
 
     # Item Name
     "item": "Item Name",
+    "item name": "Item Name",
     "description": "Item Name",
     "product": "Item Name",
+    "product name": "Item Name",
+    "service name": "Item Name",
+    "goods/service description": "Item Name",
+    "material name": "Item Name",
+    "particulars": "Item Name",
+    "item description": "Item Name",
+    "product details": "Item Name",
 
     # Quantity
     "qty": "Quantity",
     "quantity": "Quantity",
+    "no. of units": "Quantity",
+    "nos.": "Quantity",
+    "packets": "Quantity",
+    "pcs": "Quantity",
+    "units": "Quantity",
+    "order quantity": "Quantity",
 
     # Rate
     "rate": "Rate",
     "price": "Rate",
     "unit cost": "Rate",
+    "unit price": "Rate",
+    "per unit rate": "Rate",
+    "selling price": "Rate",
+    "unit value": "Rate",
+    "rate per item": "Rate",
 
     # Gross Amount
     "gross amount": "Gross Amount",
     "total value": "Gross Amount",
+    "total before tax": "Gross Amount",
+    "amount before tax": "Gross Amount",
+    "subtotal": "Gross Amount",
+    "line total": "Gross Amount",
 
     # Discount %
-    "discount%": "Discount%",
-    "discount": "Discount%",
+    "discount%": "Discount(%)",
+    "discount": "Discount(%)",
+    "disc%": "Discount(%)",
+    "rebate %": "Discount(%)",
+    "offer %": "Discount(%)",
+    "deduction %": "Discount(%)",
+    "allowance %": "Discount(%)",
 
     # Discount Amount
     "discount amount": "Discount Amount",
     "disc amt": "Discount Amount",
+    "rebate amount": "Discount Amount",
+    "deduction value": "Discount Amount",
+    "offer amount": "Discount Amount",
+    "concession": "Discount Amount",
+    "discounted amount": "Discount Amount",
+    "total discount": "Discount Amount",
 
     # IGST %
-    "igst%": "IGST%",
-    "igst rate %": "IGST%",
+    "igst%": "IGST(%)",
+    "igst rate %": "IGST(%)",
+    "integrated tax %": "IGST(%)",
+    "igst duty %": "IGST(%)",
+    "int. gst %": "IGST(%)",
 
     # IGST Amount
     "igst amount": "IGST Amount",
     "igst value": "IGST Amount",
+    "integrated tax amount": "IGST Amount",
+    "igst duty amount": "IGST Amount",
+    "igst charges": "IGST Amount",
+    "igst total": "IGST Amount",
+    "igst": "IGST Amount",
 
     # CGST %
-    "cgst%": "CGST%",
-    "cgst rate %": "CGST%",
+    "cgst%": "CGST(%)",
+    "cgst rate %": "CGST(%)",
+    "central tax %": "CGST(%)",
+    "c. gst %": "CGST(%)",
+    "central gst rate": "CGST(%)",
 
     # CGST Amount
     "cgst amount": "CGST Amount",
     "cgst value": "CGST Amount",
+    "central tax amount": "CGST Amount",
+    "cgst charges": "CGST Amount",
+    "cgst duty amount": "CGST Amount",
+    "cgst total": "CGST Amount",
+    "cgst": "CGST Amount",
 
     # SGST %
-    "sgst%": "SGST%",
-    "sgst rate %": "SGST%",
+    "sgst%": "SGST(%)",
+    "sgst rate %": "SGST(%)",
+    "state tax %": "SGST(%)",
+    "s. gst %": "SGST(%)",
+    "state gst rate": "SGST(%)",
 
     # SGST Amount
     "sgst amount": "SGST Amount",
     "sgst value": "SGST Amount",
+    "state tax amount": "SGST Amount",
+    "sgst charges": "SGST Amount",
+    "sgst duty amount": "SGST Amount",
+    "sgst total": "SGST Amount",
+    "sgst": "SGST Amount",
 
     # Net Amount
     "net amount": "Net Amount",
     "grand total": "Net Amount",
     "invoice total": "Net Amount",
+    "total payable": "Net Amount",
+    "amount due": "Net Amount",
+    "final total": "Net Amount",
 }
 
 
@@ -141,7 +215,10 @@ def parse_invoice(pdf, text, filename):
 
     # Clean numeric values
     for col in df.columns:
-        if any(key in col.lower() for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net", "gross"]):
+        if any(
+            key in col.lower()
+            for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net", "gross"]
+        ):
             df[col] = df[col].apply(clean_numeric)
 
     # Extract Invoice No
@@ -162,37 +239,51 @@ def parse_invoice(pdf, text, filename):
     # Ensure all expected columns exist
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
-            df[col] = 0 if "Amount" in col or "%" in col or col in ["Quantity", "Rate", "Gross Amount", "Net Amount"] else ""
+            if col in ["Quantity", "Rate", "Gross Amount", "Discount%", "Discount Amount",
+                       "IGST%", "IGST Amount", "CGST%", "CGST Amount", "SGST%", "SGST Amount", "Net Amount"]:
+                df[col] = 0.0
+            else:
+                df[col] = ""
 
     # ----------- Auto Calculations ------------
     df["Gross Amount"] = df.apply(
-        lambda x: x["Quantity"] * x["Rate"] if (x.get("Gross Amount", 0) in [0, None, ""]) else x["Gross Amount"],
+        lambda x: x["Quantity"] * x["Rate"]
+        if (pd.isna(x["Gross Amount"]) or x["Gross Amount"] == 0)
+        else x["Gross Amount"],
         axis=1,
     )
 
     df["Discount Amount"] = df.apply(
-        lambda x: (x["Gross Amount"] * (x["Discount%"] / 100)) if (x.get("Discount Amount", 0) in [0, None, ""]) else x["Discount Amount"],
+        lambda x: (x["Gross Amount"] * (x["Discount%"] / 100))
+        if (pd.isna(x["Discount Amount"]) or x["Discount Amount"] == 0)
+        else x["Discount Amount"],
         axis=1,
     )
 
     df["IGST Amount"] = df.apply(
-        lambda x: (x["Gross Amount"] - x["Discount Amount"]) * (x["IGST%"] / 100) if (x.get("IGST Amount", 0) in [0, None, ""]) else x["IGST Amount"],
+        lambda x: (x["Gross Amount"] - x["Discount Amount"]) * (x["IGST%"] / 100)
+        if (pd.isna(x["IGST Amount"]) or x["IGST Amount"] == 0)
+        else x["IGST Amount"],
         axis=1,
     )
 
     df["CGST Amount"] = df.apply(
-        lambda x: (x["Gross Amount"] - x["Discount Amount"]) * (x["CGST%"] / 100) if (x.get("CGST Amount", 0) in [0, None, ""]) else x["CGST Amount"],
+        lambda x: (x["Gross Amount"] - x["Discount Amount"]) * (x["CGST%"] / 100)
+        if (pd.isna(x["CGST Amount"]) or x["CGST Amount"] == 0)
+        else x["CGST Amount"],
         axis=1,
     )
 
     df["SGST Amount"] = df.apply(
-        lambda x: (x["Gross Amount"] - x["Discount Amount"]) * (x["SGST%"] / 100) if (x.get("SGST Amount", 0) in [0, None, ""]) else x["SGST Amount"],
+        lambda x: (x["Gross Amount"] - x["Discount Amount"]) * (x["SGST%"] / 100)
+        if (pd.isna(x["SGST Amount"]) or x["SGST Amount"] == 0)
+        else x["SGST Amount"],
         axis=1,
     )
 
     df["Net Amount"] = df.apply(
         lambda x: (x["Gross Amount"] - x["Discount Amount"] + x["IGST Amount"] + x["CGST Amount"] + x["SGST Amount"])
-        if (x.get("Net Amount", 0) in [0, None, ""])
+        if (pd.isna(x["Net Amount"]) or x["Net Amount"] == 0)
         else x["Net Amount"],
         axis=1,
     )
