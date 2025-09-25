@@ -60,18 +60,21 @@ def parse_invoice(pdf_path, filename):
                     df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
                     all_tables.append(df)
 
-    # Merge tables if found
+    # Merge or empty
     if all_tables:
         df = pd.concat(all_tables, ignore_index=True)
     else:
         df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+
+    # ✅ Ensure required columns exist immediately
+    df = ensure_columns(df)
 
     # Clean numbers
     for col in df.columns:
         if any(k in col.lower() for k in ["amount","rate","qty","igst","cgst","sgst","discount","net","gross"]):
             df[col] = df[col].apply(clean_numeric)
 
-    # -------- Metadata --------
+    # Metadata
     inv_match = re.search(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text_data, re.I)
     invoice_no = inv_match.group(1) if inv_match else "Unknown"
 
@@ -79,10 +82,9 @@ def parse_invoice(pdf_path, filename):
     supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
     customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
 
-    # -------- Regex Fallback for line-items --------
+    # -------- Regex fallback for items --------
     if df.empty or df[["Quantity","Rate","Gross Amount"]].sum().sum() == 0:
         rows = []
-        # Example regex: HSN 1234  Product ABC  10  50.00  500.00
         item_pattern = re.compile(
             r"(?P<hsn>\d{4,8})\s+(?P<item>[A-Za-z0-9 \-.,]+?)\s+(?P<qty>\d+)\s+(?P<rate>[\d,.]+)\s+(?P<amount>[\d,.]+)",
             re.I
@@ -107,11 +109,9 @@ def parse_invoice(pdf_path, filename):
 
         if rows:
             df = pd.DataFrame(rows)
+            df = ensure_columns(df)
 
-    # Ensure all columns exist
-    df = ensure_columns(df)
-
-    # Metadata overwrite
+    # ✅ Final metadata overwrite
     df["Invoice No"] = invoice_no
     df["Supplier GSTIN"] = supplier_gstin
     df["Customer GSTIN"] = customer_gstin
