@@ -24,154 +24,32 @@ EXPECTED_COLUMNS = [
 ]
 
 HEADER_MAP = {
-    # Invoice No
-    "invoice no": "Invoice No",
-    "invoice #": "Invoice No",
-    "inv. no.": "Invoice No",
-    "bill no": "Invoice No",
-    "voucher no": "Invoice No",
-    "document no": "Invoice No",
-    # Supplier GSTIN
-    "supplier gstin": "Supplier GSTIN",
-    "seller gstin": "Supplier GSTIN",
-    "vendor gstin": "Supplier GSTIN",
-    "supplier gst no": "Supplier GSTIN",
-    "seller tax id": "Supplier GSTIN",
-    "vendor tax id": "Supplier GSTIN",
-    # Customer GSTIN
-    "customer gstin": "Customer GSTIN",
-    "buyer gstin": "Customer GSTIN",
-    "client gstin": "Customer GSTIN",
-    "recipient gstin": "Customer GSTIN",
-    "customer gst no": "Customer GSTIN",
-    "buyer tax id": "Customer GSTIN",
-    # Source File
-    "source file": "Source File",
-    "upload name": "Source File",
-    "source document": "Source File",
-    "file reference": "Source File",
-    "document source": "Source File",
-    "file path": "Source File",
-    # HSN
-    "hsn": "HSN",
-    "hsn code": "HSN",
-    "hsn/sac": "HSN",
-    "hsn code no": "HSN",
-    "hsn classification": "HSN",
-    "hsn/sac code": "HSN",
-    "harmonized code": "HSN",
-    # Item Name
-    "item": "Item Name",
-    "item name": "Item Name",
-    "description": "Item Name",
-    "product": "Item Name",
-    "product name": "Item Name",
-    "service name": "Item Name",
-    "goods/service description": "Item Name",
-    "material name": "Item Name",
-    "particulars": "Item Name",
-    "item description": "Item Name",
-    "product details": "Item Name",
-    # Quantity
-    "qty": "Quantity",
-    "quantity": "Quantity",
-    "no. of units": "Quantity",
-    "nos.": "Quantity",
-    "packets": "Quantity",
-    "pcs": "Quantity",
-    "units": "Quantity",
-    "order quantity": "Quantity",
-    # Rate
-    "rate": "Rate",
-    "price": "Rate",
-    "unit cost": "Rate",
-    "unit price": "Rate",
-    "per unit rate": "Rate",
-    "selling price": "Rate",
-    "unit value": "Rate",
-    "rate per item": "Rate",
-    # Gross Amount
-    "gross amount": "Gross Amount",
-    "total value": "Gross Amount",
-    "total before tax": "Gross Amount",
-    "amount before tax": "Gross Amount",
-    "subtotal": "Gross Amount",
-    "line total": "Gross Amount",
-    # Discount %
-    "discount%": "Discount%",
-    "discount": "Discount%",
-    "disc%": "Discount%",
-    "rebate %": "Discount%",
-    "offer %": "Discount%",
-    "deduction %": "Discount%",
-    "allowance %": "Discount%",
-    # Discount Amount
-    "discount amount": "Discount Amount",
-    "disc amt": "Discount Amount",
-    "rebate amount": "Discount Amount",
-    "deduction value": "Discount Amount",
-    "offer amount": "Discount Amount",
-    "concession": "Discount Amount",
-    "discounted amount": "Discount Amount",
-    "total discount": "Discount Amount",
-    # IGST %
-    "igst%": "IGST%",
-    "igst rate %": "IGST%",
-    "integrated tax %": "IGST%",
-    "igst duty %": "IGST%",
-    "int. gst %": "IGST%",
-    # IGST Amount
-    "igst amount": "IGST Amount",
-    "igst value": "IGST Amount",
-    "integrated tax amount": "IGST Amount",
-    "igst duty amount": "IGST Amount",
-    "igst charges": "IGST Amount",
-    "igst total": "IGST Amount",
-    "igst": "IGST Amount",
-    # CGST %
-    "cgst%": "CGST%",
-    "cgst rate %": "CGST%",
-    "central tax %": "CGST%",
-    "c. gst %": "CGST%",
-    "central gst rate": "CGST%",
-    # CGST Amount
-    "cgst amount": "CGST Amount",
-    "cgst value": "CGST Amount",
-    "central tax amount": "CGST Amount",
-    "cgst charges": "CGST Amount",
-    "cgst duty amount": "CGST Amount",
-    "cgst total": "CGST Amount",
-    "cgst": "CGST Amount",
-    # SGST %
-    "sgst%": "SGST%",
-    "sgst rate %": "SGST%",
-    "state tax %": "SGST%",
-    "s. gst %": "SGST%",
-    "state gst rate": "SGST%",
-    # SGST Amount
-    "sgst amount": "SGST Amount",
-    "sgst value": "SGST Amount",
-    "state tax amount": "SGST Amount",
-    "sgst charges": "SGST Amount",
-    "sgst duty amount": "SGST Amount",
-    "sgst total": "SGST Amount",
-    "sgst": "SGST Amount",
-    # Net Amount
-    "net amount": "Net Amount",
-    "grand total": "Net Amount",
-    "invoice total": "Net Amount",
-    "total payable": "Net Amount",
-    "amount due": "Net Amount",
-    "final total": "Net Amount",
+    "invoice no": "Invoice No", "invoice #": "Invoice No", "inv. no.": "Invoice No",
+    "bill no": "Invoice No", "voucher no": "Invoice No", "document no": "Invoice No",
+    "supplier gstin": "Supplier GSTIN", "seller gstin": "Supplier GSTIN", "vendor gstin": "Supplier GSTIN",
+    "customer gstin": "Customer GSTIN", "buyer gstin": "Customer GSTIN", "recipient gstin": "Customer GSTIN",
+    "hsn": "HSN", "hsn code": "HSN", "hsn/sac": "HSN",
+    "item": "Item Name", "item name": "Item Name", "description": "Item Name",
+    "product": "Item Name", "product name": "Item Name", "particulars": "Item Name",
+    "qty": "Quantity", "quantity": "Quantity", "pcs": "Quantity", "units": "Quantity",
+    "rate": "Rate", "price": "Rate", "unit cost": "Rate", "unit price": "Rate",
+    "gross amount": "Gross Amount", "total value": "Gross Amount", "subtotal": "Gross Amount",
+    "discount%": "Discount%", "disc%": "Discount%", "discount (%)": "Discount%",
+    "discount amount": "Discount Amount", "disc amt": "Discount Amount",
+    "igst%": "IGST%", "igst rate %": "IGST%", "integrated tax %": "IGST%",
+    "igst amount": "IGST Amount", "igst value": "IGST Amount",
+    "cgst%": "CGST%", "cgst rate %": "CGST%", "central tax %": "CGST%",
+    "cgst amount": "CGST Amount", "cgst value": "CGST Amount",
+    "sgst%": "SGST%", "sgst rate %": "SGST%", "state tax %": "SGST%",
+    "sgst amount": "SGST Amount", "sgst value": "SGST Amount",
+    "net amount": "Net Amount", "grand total": "Net Amount", "invoice total": "Net Amount",
 }
-
 
 def normalize_headers(headers):
     return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
 
-
 def clean_numeric(value):
-    """Remove unwanted symbols from numbers (₹, %, commas, etc.)"""
+    """Remove unwanted symbols and convert to float."""
     if isinstance(value, str):
         value = re.sub(r"[^\d.\-]", "", value)
     try:
@@ -179,11 +57,9 @@ def clean_numeric(value):
     except:
         return 0.0
 
-
 def parse_invoice(pdf_path, filename, text=""):
-    """Extracts invoice table data and adds Invoice No, GSTIN, and Source File"""
+    """Extract invoice data from PDF file path."""
     all_tables = []
-
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             tables = page.extract_tables()
@@ -197,7 +73,7 @@ def parse_invoice(pdf_path, filename, text=""):
     else:
         df = pd.DataFrame(columns=EXPECTED_COLUMNS)
 
-    # Clean numeric values
+    # Clean numeric fields
     for col in df.columns:
         if any(key in col.lower() for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net", "gross"]):
             df[col] = df[col].apply(clean_numeric)
@@ -206,12 +82,12 @@ def parse_invoice(pdf_path, filename, text=""):
     invoice_no = re.findall(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.IGNORECASE)
     invoice_no = invoice_no[0] if invoice_no else "Unknown"
 
-    # Extract Supplier & Customer GSTIN
+    # Extract GSTINs
     gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", text)
     supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
     customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
 
-    # Add Info columns
+    # Add metadata
     df["Invoice No"] = invoice_no
     df["Supplier GSTIN"] = supplier_gstin
     df["Customer GSTIN"] = customer_gstin
@@ -222,7 +98,4 @@ def parse_invoice(pdf_path, filename, text=""):
         if col not in df.columns:
             df[col] = 0.0 if col not in ["Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File", "HSN", "Item Name"] else ""
 
-    # Reorder columns
-    df = df[EXPECTED_COLUMNS]
-
-    return df
+    return df[EXPECTED_COLUMNS]
