@@ -60,7 +60,7 @@ def parse_invoice(pdf_path, filename):
                     df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
                     all_tables.append(df)
 
-    # Merge tables or create empty
+    # Merge tables if found
     if all_tables:
         df = pd.concat(all_tables, ignore_index=True)
     else:
@@ -71,7 +71,7 @@ def parse_invoice(pdf_path, filename):
         if any(k in col.lower() for k in ["amount","rate","qty","igst","cgst","sgst","discount","net","gross"]):
             df[col] = df[col].apply(clean_numeric)
 
-    # Metadata
+    # -------- Metadata --------
     inv_match = re.search(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text_data, re.I)
     invoice_no = inv_match.group(1) if inv_match else "Unknown"
 
@@ -79,38 +79,39 @@ def parse_invoice(pdf_path, filename):
     supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
     customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
 
-    # Always ensure all columns exist before checks
+    # -------- Regex Fallback for line-items --------
+    if df.empty or df[["Quantity","Rate","Gross Amount"]].sum().sum() == 0:
+        rows = []
+        # Example regex: HSN 1234  Product ABC  10  50.00  500.00
+        item_pattern = re.compile(
+            r"(?P<hsn>\d{4,8})\s+(?P<item>[A-Za-z0-9 \-.,]+?)\s+(?P<qty>\d+)\s+(?P<rate>[\d,.]+)\s+(?P<amount>[\d,.]+)",
+            re.I
+        )
+        for match in item_pattern.finditer(text_data):
+            rows.append({
+                "Invoice No": invoice_no,
+                "Supplier GSTIN": supplier_gstin,
+                "Customer GSTIN": customer_gstin,
+                "Source File": filename,
+                "HSN": match.group("hsn"),
+                "Item Name": match.group("item").strip(),
+                "Quantity": clean_numeric(match.group("qty")),
+                "Rate": clean_numeric(match.group("rate")),
+                "Gross Amount": clean_numeric(match.group("amount")),
+                "Discount%": 0, "Discount Amount": 0,
+                "IGST%": 0, "IGST Amount": 0,
+                "CGST%": 0, "CGST Amount": 0,
+                "SGST%": 0, "SGST Amount": 0,
+                "Net Amount": clean_numeric(match.group("amount")),
+            })
+
+        if rows:
+            df = pd.DataFrame(rows)
+
+    # Ensure all columns exist
     df = ensure_columns(df)
 
-    # Fallback if still blank/zero
-    if df[["Gross Amount","Net Amount"]].sum().sum() == 0:
-        qty = re.search(r"Qty[:\-]?\s*(\d+)", text_data, re.I)
-        rate = re.search(r"Rate[:\-]?\s*([\d,.]+)", text_data, re.I)
-        gross = re.search(r"Gross\s*Amount[:\-]?\s*([\d,.]+)", text_data, re.I)
-        net = re.search(r"(Net\s*Amount|Total\s*Payable)[:\-]?\s*([\d,.]+)", text_data, re.I)
-
-        row = {
-            "Invoice No": invoice_no,
-            "Supplier GSTIN": supplier_gstin,
-            "Customer GSTIN": customer_gstin,
-            "Source File": filename,
-            "HSN": "",
-            "Item Name": "",
-            "Quantity": clean_numeric(qty.group(1)) if qty else 0,
-            "Rate": clean_numeric(rate.group(1)) if rate else 0,
-            "Gross Amount": clean_numeric(gross.group(1)) if gross else 0,
-            "Discount%": 0,"Discount Amount": 0,
-            "IGST%": 0,"IGST Amount": 0,
-            "CGST%": 0,"CGST Amount": 0,
-            "SGST%": 0,"SGST Amount": 0,
-            "Net Amount": clean_numeric(net.group(2)) if net else 0,
-        }
-        df = pd.DataFrame([row])
-
-    # Ensure again after fallback
-    df = ensure_columns(df)
-
-    # Assign metadata
+    # Metadata overwrite
     df["Invoice No"] = invoice_no
     df["Supplier GSTIN"] = supplier_gstin
     df["Customer GSTIN"] = customer_gstin

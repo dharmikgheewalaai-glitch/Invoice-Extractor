@@ -4,6 +4,7 @@ import os
 import pandas as pd
 from extractor import parse_invoice
 
+st.set_page_config(page_title="Invoice Extractor", layout="wide")
 st.title("📄 Invoice Extractor")
 
 uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
