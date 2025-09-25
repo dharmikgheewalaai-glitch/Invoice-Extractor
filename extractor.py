@@ -37,11 +37,20 @@ def clean_numeric(value):
     except:
         return 0.0
 
+def ensure_columns(df):
+    """Guarantee all expected columns exist"""
+    for col in EXPECTED_COLUMNS:
+        if col not in df.columns:
+            if col in ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"]:
+                df[col] = ""
+            else:
+                df[col] = 0.0
+    return df
+
 def parse_invoice(pdf_path, filename):
     all_tables = []
     text_data = ""
 
-    # Extract with pdfplumber
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             text_data += page.extract_text() or ""
@@ -51,7 +60,7 @@ def parse_invoice(pdf_path, filename):
                     df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
                     all_tables.append(df)
 
-    # Merge tables if found
+    # Merge tables or create empty
     if all_tables:
         df = pd.concat(all_tables, ignore_index=True)
     else:
@@ -62,7 +71,7 @@ def parse_invoice(pdf_path, filename):
         if any(k in col.lower() for k in ["amount","rate","qty","igst","cgst","sgst","discount","net","gross"]):
             df[col] = df[col].apply(clean_numeric)
 
-    # -------- Metadata from text --------
+    # Metadata
     inv_match = re.search(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text_data, re.I)
     invoice_no = inv_match.group(1) if inv_match else "Unknown"
 
@@ -70,8 +79,11 @@ def parse_invoice(pdf_path, filename):
     supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
     customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
 
-    # --------- Fallback Regex for amounts if table empty ---------
-    if df.empty or df[["Quantity","Rate","Gross Amount","Net Amount"]].sum().sum() == 0:
+    # Always ensure all columns exist before checks
+    df = ensure_columns(df)
+
+    # Fallback if still blank/zero
+    if df[["Gross Amount","Net Amount"]].sum().sum() == 0:
         qty = re.search(r"Qty[:\-]?\s*(\d+)", text_data, re.I)
         rate = re.search(r"Rate[:\-]?\s*([\d,.]+)", text_data, re.I)
         gross = re.search(r"Gross\s*Amount[:\-]?\s*([\d,.]+)", text_data, re.I)
@@ -93,16 +105,15 @@ def parse_invoice(pdf_path, filename):
             "SGST%": 0,"SGST Amount": 0,
             "Net Amount": clean_numeric(net.group(2)) if net else 0,
         }
-        df = pd.DataFrame([row], columns=EXPECTED_COLUMNS)
+        df = pd.DataFrame([row])
 
-    else:
-        # Ensure metadata columns exist
-        df["Invoice No"] = invoice_no
-        df["Supplier GSTIN"] = supplier_gstin
-        df["Customer GSTIN"] = customer_gstin
-        df["Source File"] = filename
-        for col in EXPECTED_COLUMNS:
-            if col not in df.columns:
-                df[col] = 0.0 if col not in ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"] else ""
+    # Ensure again after fallback
+    df = ensure_columns(df)
+
+    # Assign metadata
+    df["Invoice No"] = invoice_no
+    df["Supplier GSTIN"] = supplier_gstin
+    df["Customer GSTIN"] = customer_gstin
+    df["Source File"] = filename
 
     return df[EXPECTED_COLUMNS]
