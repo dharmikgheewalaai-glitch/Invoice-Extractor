@@ -1,49 +1,41 @@
 import streamlit as st
 import tempfile
 import os
-import traceback
+import pandas as pd
 from extractor import parse_invoice
 
-st.set_page_config(page_title="Invoice Extractor", layout="wide")
-st.title("Invoice Extractor")
+st.title("📄 Invoice Extractor")
 
 uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
 
 if uploaded_file:
-    # ---- Save uploaded file to a temporary file ----
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(uploaded_file.read())
-        tmp_path = tmp.name
+    # ---- Save uploaded PDF to a temporary file ----
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        tmp_path = tmp_file.name
 
+    # ---- Extract invoice data ----
     try:
-        # ---- Call extractor with file path ----
-        df = parse_invoice(tmp_path, uploaded_file.name, text="")
+        df = parse_invoice(tmp_path, uploaded_file.name)
 
         st.subheader("Extracted Invoice Data")
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df)
 
-        # ---- Download buttons ----
+        # ---- Download options ----
         csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download CSV",
-            data=csv,
-            file_name=f"{os.path.splitext(uploaded_file.name)[0]}.csv",
-            mime="text/csv",
-        )
+        st.download_button("⬇ Download CSV", csv, "invoice_data.csv", "text/csv")
 
-        from io import BytesIO
-        excel_buffer = BytesIO()
-        df.to_excel(excel_buffer, index=False, engine="openpyxl")
-        st.download_button(
-            label="Download Excel",
-            data=excel_buffer.getvalue(),
-            file_name=f"{os.path.splitext(uploaded_file.name)[0]}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        excel = df.to_excel("invoice_data.xlsx", index=False)
+        with open("invoice_data.xlsx", "rb") as f:
+            st.download_button("⬇ Download Excel", f, "invoice_data.xlsx")
+
+        pdf_out = df.to_string(index=False)
+        st.download_button("⬇ Download TXT", pdf_out, "invoice_data.txt")
 
     except Exception as e:
-        st.error(f"❌ Error parsing invoice: {e}")
-        st.text(traceback.format_exc())
+        st.error(f"Error parsing invoice: {e}")
+
     finally:
+        # ---- Clean up temporary file ----
         if os.path.exists(tmp_path):
             os.remove(tmp_path)

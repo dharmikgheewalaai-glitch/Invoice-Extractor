@@ -20,7 +20,7 @@ HEADER_MAP = {
     "gross amount": "Gross Amount","subtotal": "Gross Amount",
     "discount%": "Discount%","disc%": "Discount%",
     "discount amount": "Discount Amount","disc amt": "Discount Amount",
-    "igst%": "IGST%","igst rate %": "IGST%","igst amount": "IGST Amount",
+    "igst%": "IGST%","igst amount": "IGST Amount",
     "cgst%": "CGST%","cgst amount": "CGST Amount",
     "sgst%": "SGST%","sgst amount": "SGST Amount",
     "net amount": "Net Amount","grand total": "Net Amount",
@@ -55,7 +55,6 @@ def parse_invoice(pdf_path, filename):
     if all_tables:
         df = pd.concat(all_tables, ignore_index=True)
     else:
-        # fallback: create empty frame
         df = pd.DataFrame(columns=EXPECTED_COLUMNS)
 
     # Clean numbers
