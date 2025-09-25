@@ -1,274 +1,142 @@
 import pdfplumber
 import pandas as pd
 import re
+import os
 
-# -------- Expected Columns --------
-EXPECTED_COLUMNS = [
-    "Invoice No",
-    "Supplier GSTIN",
-    "Customer GSTIN",
-    "Source File",
-    "HSN",
-    "Item Name",
-    "Quantity",
-    "Rate",
-    "Gross Amount",
-    "Discount%",
-    "Discount Amount",
-    "IGST%",
-    "IGST Amount",
-    "CGST%",
-    "CGST Amount",
-    "SGST%",
-    "SGST Amount",
-    "Net Amount",
-]
-
-# -------- Header Normalization Map --------
+# ✅ Header mapping (covers all variants)
 HEADER_MAP = {
-    "invoice no": "Invoice No",
-    "invoice #": "Invoice No",
-    "inv. no.": "Invoice No",
-    "bill no": "Invoice No",
-    "voucher no": "Invoice No",
-    "document no": "Invoice No",
+    "Invoice No": ["invoice no", "inv no", "bill no", "invoice number"],
+    "Supplier GSTIN": ["supplier gstin", "from gstin", "seller gstin"],
+    "Customer GSTIN": ["customer gstin", "to gstin", "buyer gstin"],
+    "Source File": ["source file"],
 
-    "supplier gstin": "Supplier GSTIN",
-    "seller gstin": "Supplier GSTIN",
-    "vendor gstin": "Supplier GSTIN",
-    "supplier gst no": "Supplier GSTIN",
-    "seller tax id": "Supplier GSTIN",
-    "vendor tax id": "Supplier GSTIN",
+    "HSN": ["hsn", "hsn code"],
+    "Item Name": ["item", "description", "product", "item name", "particulars"],
+    "Quantity": ["qty", "quantity", "qnty"],
+    "Rate": ["rate", "price", "unit price", "per unit"],
+    "Gross Amount": ["gross", "amount", "total", "taxable value", "line total"],
 
-    "customer gstin": "Customer GSTIN",
-    "buyer gstin": "Customer GSTIN",
-    "client gstin": "Customer GSTIN",
-    "recipient gstin": "Customer GSTIN",
-    "customer gst no": "Customer GSTIN",
-    "buyer tax id": "Customer GSTIN",
+    "Discount%": ["discount%", "disc%", "discount percent"],
+    "Discount Amount": ["discount", "disc amt", "discount amount"],
 
-    "source file": "Source File",
-    "upload name": "Source File",
-    "source document": "Source File",
-    "file reference": "Source File",
-    "document source": "Source File",
-    "file path": "Source File",
+    "IGST%": ["igst%", "igst rate"],
+    "IGST Amount": ["igst", "igst amount"],
+    "CGST%": ["cgst%", "cgst rate"],
+    "CGST Amount": ["cgst", "cgst amount"],
+    "SGST%": ["sgst%", "sgst rate"],
+    "SGST Amount": ["sgst", "sgst amount"],
 
-    "hsn": "HSN",
-    "hsn code": "HSN",
-    "hsn/sac": "HSN",
-    "hsn code no": "HSN",
-    "hsn classification": "HSN",
-    "hsn/sac code": "HSN",
-    "harmonized code": "HSN",
-
-    "item": "Item Name",
-    "item name": "Item Name",
-    "description": "Item Name",
-    "product": "Item Name",
-    "product name": "Item Name",
-    "service name": "Item Name",
-    "goods/service description": "Item Name",
-    "material name": "Item Name",
-    "particulars": "Item Name",
-    "item description": "Item Name",
-    "product details": "Item Name",
-
-    "qty": "Quantity",
-    "quantity": "Quantity",
-    "no. of units": "Quantity",
-    "nos.": "Quantity",
-    "packets": "Quantity",
-    "pcs": "Quantity",
-    "units": "Quantity",
-    "order quantity": "Quantity",
-
-    "rate": "Rate",
-    "price": "Rate",
-    "unit cost": "Rate",
-    "unit price": "Rate",
-    "per unit rate": "Rate",
-    "selling price": "Rate",
-    "unit value": "Rate",
-    "rate per item": "Rate",
-
-    "gross amount": "Gross Amount",
-    "total value": "Gross Amount",
-    "total before tax": "Gross Amount",
-    "amount before tax": "Gross Amount",
-    "subtotal": "Gross Amount",
-    "line total": "Gross Amount",
-
-    "discount%": "Discount%",
-    "discount": "Discount%",
-    "disc%": "Discount%",
-    "rebate %": "Discount%",
-    "offer %": "Discount%",
-    "deduction %": "Discount%",
-    "allowance %": "Discount%",
-
-    "discount amount": "Discount Amount",
-    "disc amt": "Discount Amount",
-    "rebate amount": "Discount Amount",
-    "deduction value": "Discount Amount",
-    "offer amount": "Discount Amount",
-    "concession": "Discount Amount",
-    "discounted amount": "Discount Amount",
-    "total discount": "Discount Amount",
-
-    "igst%": "IGST%",
-    "igst rate %": "IGST%",
-    "integrated tax %": "IGST%",
-    "igst duty %": "IGST%",
-    "int. gst %": "IGST%",
-
-    "igst amount": "IGST Amount",
-    "igst value": "IGST Amount",
-    "integrated tax amount": "IGST Amount",
-    "igst duty amount": "IGST Amount",
-    "igst charges": "IGST Amount",
-    "igst total": "IGST Amount",
-    "igst": "IGST Amount",
-
-    "cgst%": "CGST%",
-    "cgst rate %": "CGST%",
-    "central tax %": "CGST%",
-    "c. gst %": "CGST%",
-    "central gst rate": "CGST%",
-
-    "cgst amount": "CGST Amount",
-    "cgst value": "CGST Amount",
-    "central tax amount": "CGST Amount",
-    "cgst charges": "CGST Amount",
-    "cgst duty amount": "CGST Amount",
-    "cgst total": "CGST Amount",
-    "cgst": "CGST Amount",
-
-    "sgst%": "SGST%",
-    "sgst rate %": "SGST%",
-    "state tax %": "SGST%",
-    "s. gst %": "SGST%",
-    "state gst rate": "SGST%",
-
-    "sgst amount": "SGST Amount",
-    "sgst value": "SGST Amount",
-    "state tax amount": "SGST Amount",
-    "sgst charges": "SGST Amount",
-    "sgst duty amount": "SGST Amount",
-    "sgst total": "SGST Amount",
-    "sgst": "SGST Amount",
-
-    "net amount": "Net Amount",
-    "grand total": "Net Amount",
-    "invoice total": "Net Amount",
-    "total payable": "Net Amount",
-    "amount due": "Net Amount",
-    "final total": "Net Amount",
+    "Net Amount": ["net", "total amount", "grand total", "net amount", "invoice total"]
 }
 
-def normalize_headers(headers):
-    return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
-
-# -------- Helpers --------
-def clean_text(text):
-    return re.sub(r"\s+", " ", text.strip()) if text else ""
-
-def safe_float(value):
+# ✅ Utility: clean numeric values
+def clean_numeric(val):
     try:
-        return float(str(value).replace(",", "").strip())
-    except Exception:
+        if val in [None, "", " "]:
+            return 0.0
+        return float(str(val).replace(",", "").replace("₹", "").replace("Rs.", "").strip())
+    except:
         return 0.0
 
-# -------- Main Parser --------
-def parse_invoice(pdf, text, filename):
-    all_tables = []
-    for page in pdf.pages:
-        tables = page.extract_tables()
-        for table in tables:
-            if table and len(table) > 1:
-                df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
-                all_tables.append(df)
+# ✅ Normalize headers
+def normalize_header(h):
+    return re.sub(r"[^a-z0-9]", "", str(h).strip().lower())
 
-    if all_tables:
-        df = pd.concat(all_tables, ignore_index=True)
+# ✅ Match headers with HEADER_MAP
+def map_headers(columns):
+    mapped = {}
+    for col in columns:
+        norm = normalize_header(col)
+        mapped_name = None
+        for key, variants in HEADER_MAP.items():
+            for v in variants:
+                if normalize_header(v) == norm:
+                    mapped_name = key
+                    break
+            if mapped_name:
+                break
+        if mapped_name:
+            mapped[col] = mapped_name
+        else:
+            mapped[col] = col  # keep as is if not mapped
+    return mapped
+
+# ✅ Auto recalc logic
+def recalc_values(df):
+    # Ensure numeric conversion
+    for col in ["Quantity", "Rate", "Gross Amount", "Discount%", "Discount Amount",
+                "IGST%", "IGST Amount", "CGST%", "CGST Amount", "SGST%", "SGST Amount", "Net Amount"]:
+        if col in df.columns:
+            df[col] = df[col].apply(clean_numeric)
+
+    # Gross = Qty * Rate
+    if "Quantity" in df.columns and "Rate" in df.columns:
+        df["Gross Amount"] = df.apply(
+            lambda x: x["Quantity"] * x["Rate"] if x["Gross Amount"] == 0 else x["Gross Amount"], axis=1
+        )
+
+    # Discount Amount & %
+    if "Discount%" in df.columns and "Discount Amount" in df.columns:
+        df["Discount Amount"] = df.apply(
+            lambda x: (x["Gross Amount"] * x["Discount%"] / 100)
+            if (x["Discount Amount"] == 0 and x["Discount%"] > 0) else x["Discount Amount"], axis=1
+        )
+        df["Discount%"] = df.apply(
+            lambda x: (x["Discount Amount"] / x["Gross Amount"] * 100)
+            if (x["Discount%"] == 0 and x["Gross Amount"] > 0) else x["Discount%"], axis=1
+        )
+
+    taxable = df["Gross Amount"] - df["Discount Amount"]
+
+    # Tax % and Amounts
+    for tax in ["IGST", "CGST", "SGST"]:
+        if f"{tax}%" in df.columns and f"{tax} Amount" in df.columns:
+            df[f"{tax} Amount"] = df.apply(
+                lambda x: (taxable.loc[x.name] * x[f"{tax}%"] / 100)
+                if (x[f"{tax} Amount"] == 0 and x[f"{tax}%"] > 0) else x[f"{tax} Amount"], axis=1
+            )
+            df[f"{tax}%"] = df.apply(
+                lambda x: (x[f"{tax} Amount"] / taxable.loc[x.name] * 100)
+                if (x[f"{tax}%"] == 0 and taxable.loc[x.name] > 0) else x[f"{tax}%"], axis=1
+            )
+
+    # Net Amount
+    if all(col in df.columns for col in ["Gross Amount", "Discount Amount", "IGST Amount", "CGST Amount", "SGST Amount"]):
+        df["Net Amount"] = df.apply(
+            lambda x: x["Gross Amount"] - x["Discount Amount"] + x["IGST Amount"] + x["CGST Amount"] + x["SGST Amount"]
+            if x["Net Amount"] == 0 else x["Net Amount"], axis=1
+        )
+
+    return df
+
+# ✅ Main function
+def parse_invoice(pdf, text, source_file):
+    all_data = []
+
+    with pdfplumber.open(pdf) as pdf_file:
+        for page in pdf_file.pages:
+            table = page.extract_table()
+            if table:
+                headers = table[0]
+                mapped_headers = map_headers(headers)
+
+                df = pd.DataFrame(table[1:], columns=headers)
+                df = df.rename(columns=mapped_headers)
+
+                # Ensure all expected columns exist
+                for col in HEADER_MAP.keys():
+                    if col not in df.columns:
+                        df[col] = 0
+
+                df["Source File"] = source_file
+                df = recalc_values(df)
+
+                all_data.append(df)
+
+    if all_data:
+        final_df = pd.concat(all_data, ignore_index=True)
     else:
-        df = pd.DataFrame(columns=EXPECTED_COLUMNS)
+        # If no table found, return empty structured DataFrame
+        final_df = pd.DataFrame(columns=list(HEADER_MAP.keys()))
 
-    # clean numbers
-    for col in df.columns:
-        if any(key in col.lower() for key in ["amount", "rate", "qty", "igst", "cgst", "sgst", "discount", "net", "gross"]):
-            df[col] = df[col].apply(safe_float)
-
-    # invoice meta
-    inv_match = re.search(r"Invoice\s*No[:\-]?\s*(\S+)", text, re.I)
-    invoice_no = inv_match.group(1) if inv_match else "Unknown"
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", text)
-    supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
-    customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
-
-    # add info cols
-    df["Invoice No"] = invoice_no
-    df["Supplier GSTIN"] = supplier_gstin
-    df["Customer GSTIN"] = customer_gstin
-    df["Source File"] = filename
-
-    # ensure all cols exist
-    for col in EXPECTED_COLUMNS:
-        if col not in df.columns:
-            df[col] = 0.0 if col not in ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"] else ""
-
-    # ---------- Auto calculations ----------
-    # Gross
-    df["Gross Amount"] = df.apply(
-        lambda x: safe_float(x["Quantity"]) * safe_float(x["Rate"])
-        if safe_float(x["Gross Amount"]) == 0 else safe_float(x["Gross Amount"]),
-        axis=1)
-
-    # Discount
-    df["Discount Amount"] = df.apply(
-        lambda x: safe_float(x["Gross Amount"]) * safe_float(x["Discount%"]) / 100
-        if safe_float(x["Discount Amount"]) == 0 else safe_float(x["Discount Amount"]),
-        axis=1)
-    df["Discount%"] = df.apply(
-        lambda x: (safe_float(x["Discount Amount"]) / safe_float(x["Gross Amount"]) * 100)
-        if safe_float(x["Discount%"]) == 0 and safe_float(x["Gross Amount"]) != 0 else safe_float(x["Discount%"]),
-        axis=1)
-
-    # IGST
-    df["IGST Amount"] = df.apply(
-        lambda x: (safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"])) * safe_float(x["IGST%"]) / 100
-        if safe_float(x["IGST Amount"]) == 0 else safe_float(x["IGST Amount"]),
-        axis=1)
-    df["IGST%"] = df.apply(
-        lambda x: (safe_float(x["IGST Amount"]) / max((safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"])),1) * 100)
-        if safe_float(x["IGST%"]) == 0 and safe_float(x["IGST Amount"]) != 0 else safe_float(x["IGST%"]),
-        axis=1)
-
-    # CGST
-    df["CGST Amount"] = df.apply(
-        lambda x: (safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"])) * safe_float(x["CGST%"]) / 100
-        if safe_float(x["CGST Amount"]) == 0 else safe_float(x["CGST Amount"]),
-        axis=1)
-    df["CGST%"] = df.apply(
-        lambda x: (safe_float(x["CGST Amount"]) / max((safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"])),1) * 100)
-        if safe_float(x["CGST%"]) == 0 and safe_float(x["CGST Amount"]) != 0 else safe_float(x["CGST%"]),
-        axis=1)
-
-    # SGST
-    df["SGST Amount"] = df.apply(
-        lambda x: (safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"])) * safe_float(x["SGST%"]) / 100
-        if safe_float(x["SGST Amount"]) == 0 else safe_float(x["SGST Amount"]),
-        axis=1)
-    df["SGST%"] = df.apply(
-        lambda x: (safe_float(x["SGST Amount"]) / max((safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"])),1) * 100)
-        if safe_float(x["SGST%"]) == 0 and safe_float(x["SGST Amount"]) != 0 else safe_float(x["SGST%"]),
-        axis=1)
-
-    # Net
-    df["Net Amount"] = df.apply(
-        lambda x: safe_float(x["Gross Amount"]) - safe_float(x["Discount Amount"]) +
-                  safe_float(x["IGST Amount"]) + safe_float(x["CGST Amount"]) + safe_float(x["SGST Amount"])
-        if safe_float(x["Net Amount"]) == 0 else safe_float(x["Net Amount"]),
-        axis=1)
-
-    return df[EXPECTED_COLUMNS]
+    return final_df
