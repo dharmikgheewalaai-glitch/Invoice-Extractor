@@ -2,30 +2,7 @@ import pdfplumber
 import pandas as pd
 import re
 
-EXPECTED_COLUMNS = [
-    "Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File",
-    "HSN", "Item Name", "Quantity", "Rate", "Gross Amount",
-    "Discount%", "Discount Amount",
-    "IGST%", "IGST Amount", "CGST%", "CGST Amount", "SGST%", "SGST Amount",
-    "Net Amount"
-]
-
-HEADER_MAP = {
-    "invoice": "Invoice No", "inv no": "Invoice No", "bill no": "Invoice No",
-    "supplier gstin": "Supplier GSTIN", "seller gstin": "Supplier GSTIN",
-    "customer gstin": "Customer GSTIN", "buyer gstin": "Customer GSTIN",
-    "hsn": "HSN", "description": "Item Name", "item": "Item Name", "product": "Item Name",
-    "qty": "Quantity", "quantity": "Quantity",
-    "rate": "Rate", "price": "Rate",
-    "gross": "Gross Amount", "amount": "Gross Amount",
-    "discount%": "Discount%", "disc%": "Discount%",
-    "discount": "Discount Amount",
-    "igst%": "IGST%", "igst": "IGST Amount",
-    "cgst%": "CGST%", "cgst": "CGST Amount",
-    "sgst%": "SGST%", "sgst": "SGST Amount",
-    "net": "Net Amount", "total": "Net Amount", "grand total": "Net Amount"
-}
-
+# ---------- Utility ----------
 def safe_float(val):
     try:
         if val is None or str(val).strip() == "":
@@ -34,101 +11,146 @@ def safe_float(val):
     except:
         return 0.0
 
-def map_headers(headers):
-    mapped = []
-    for h in headers:
-        if not h:
-            mapped.append("")
+def extract_number_from_text(text, keyword):
+    """Finds a number near a keyword in invoice text."""
+    pattern = rf"{keyword}\s*[:\-]?\s*([\d,]+\.?\d*)"
+    match = re.search(pattern, text, re.I)
+    return safe_float(match.group(1)) if match else 0.0
+
+# ---------- Header Mapping ----------
+HEADER_MAP = {
+    "invoice no": "Invoice No",
+    "invoice number": "Invoice No",
+    "supplier gstin": "Supplier GSTIN",
+    "customer gstin": "Customer GSTIN",
+    "gstin": "Customer GSTIN",
+    "source file": "Source File",
+    "hsn": "HSN",
+    "item": "Item Name",
+    "item name": "Item Name",
+    "description": "Item Name",
+    "qty": "Quantity",
+    "quantity": "Quantity",
+    "rate": "Rate",
+    "price": "Rate",
+    "gross": "Gross Amount",
+    "gross amount": "Gross Amount",
+    "subtotal": "Gross Amount",
+    "discount%": "Discount(%)",
+    "discount (%)": "Discount(%)",
+    "disc%": "Discount(%)",
+    "discount amount": "Discount Amount",
+    "igst%": "IGST(%)",
+    "igst": "IGST Amount",
+    "igst amount": "IGST Amount",
+    "cgst%": "CGST(%)",
+    "cgst": "CGST Amount",
+    "cgst amount": "CGST Amount",
+    "sgst%": "SGST(%)",
+    "sgst": "SGST Amount",
+    "sgst amount": "SGST Amount",
+    "net": "Net Amount",
+    "net amount": "Net Amount",
+    "total": "Net Amount",
+    "grand total": "Net Amount",
+}
+
+def normalize_headers(columns):
+    return [HEADER_MAP.get(str(col).strip().lower(), col) for col in columns]
+
+# ---------- Fill Missing ----------
+def fill_missing_from_text(df, text):
+    """Fill numeric columns if they are zero, using regex on raw text."""
+    for idx, row in df.iterrows():
+        if safe_float(row.get("Gross Amount", 0)) == 0:
+            df.at[idx, "Gross Amount"] = extract_number_from_text(text, "Gross Amount|Subtotal|Total Value")
+
+        if safe_float(row.get("Discount Amount", 0)) == 0:
+            df.at[idx, "Discount Amount"] = extract_number_from_text(text, "Discount")
+
+        if safe_float(row.get("IGST Amount", 0)) == 0:
+            df.at[idx, "IGST Amount"] = extract_number_from_text(text, "IGST")
+
+        if safe_float(row.get("CGST Amount", 0)) == 0:
+            df.at[idx, "CGST Amount"] = extract_number_from_text(text, "CGST")
+
+        if safe_float(row.get("SGST Amount", 0)) == 0:
+            df.at[idx, "SGST Amount"] = extract_number_from_text(text, "SGST")
+
+        if safe_float(row.get("Net Amount", 0)) == 0:
+            df.at[idx, "Net Amount"] = extract_number_from_text(text, "Net Amount|Grand Total|Invoice Total")
+    return df
+
+# ---------- Main Parser ----------
+def parse_invoice(pdf, text, source_file=""):
+    with pdfplumber.open(pdf) as pdf_file:
+        tables = []
+        for page in pdf_file.pages:
+            tables.extend(page.extract_tables())
+
+    df_list = []
+    for table in tables:
+        if not table:
             continue
-        h_clean = str(h).strip().lower()
-        mapped.append(HEADER_MAP.get(h_clean, h.strip()))
-    return mapped
+        df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
+        df_list.append(df)
 
-def parse_from_text(text, filename):
-    """Fallback extraction directly from text using regex."""
-    inv_match = re.search(r"(Invoice\s*No|Inv\s*No|Bill\s*No)[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.I)
-    invoice_no = inv_match.group(2) if inv_match else "Unknown"
+    if not df_list:
+        return pd.DataFrame()
 
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", text)
-    supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
-    customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
+    df = pd.concat(df_list, ignore_index=True)
 
-    gross_match = re.search(r"(Gross\s*Amount|Subtotal)[:\-]?\s*([\d,]+\.?\d*)", text, re.I)
-    gross = safe_float(gross_match.group(2)) if gross_match else 0.0
-
-    net_match = re.search(r"(Net\s*Amount|Grand\s*Total|Invoice\s*Total)[:\-]?\s*([\d,]+\.?\d*)", text, re.I)
-    net = safe_float(net_match.group(2)) if net_match else 0.0
-
-    return pd.DataFrame([{
-        "Invoice No": invoice_no,
-        "Supplier GSTIN": supplier_gstin,
-        "Customer GSTIN": customer_gstin,
-        "Source File": filename,
-        "HSN": "",
-        "Item Name": "NA",
-        "Quantity": 0,
-        "Rate": 0,
-        "Gross Amount": gross,
-        "Discount%": 0,
-        "Discount Amount": 0,
-        "IGST%": 0,
-        "IGST Amount": 0,
-        "CGST%": 0,
-        "CGST Amount": 0,
-        "SGST%": 0,
-        "SGST Amount": 0,
-        "Net Amount": net
-    }], columns=EXPECTED_COLUMNS)
-
-def parse_invoice(pdf, text, filename):
-    all_tables = []
-
-    # Step 1: Try extracting structured tables
-    for page in pdf.pages:
-        tables = page.extract_tables()
-        for table in tables:
-            if table and len(table) > 1:
-                df = pd.DataFrame(table[1:], columns=map_headers(table[0]))
-                all_tables.append(df)
-
-    if all_tables:
-        df = pd.concat(all_tables, ignore_index=True)
-    else:
-        # Step 2: Fallback: extract from text
-        return parse_from_text(text, filename)
-
-    # Step 3: Ensure all expected columns exist
-    for col in EXPECTED_COLUMNS:
+    # Ensure expected columns
+    for col in [
+        "Invoice No", "Supplier GSTIN", "Customer GSTIN", "Source File", "HSN",
+        "Item Name", "Quantity", "Rate", "Gross Amount", "Discount(%)",
+        "Discount Amount", "IGST(%)", "IGST Amount", "CGST(%)", "CGST Amount",
+        "SGST(%)", "SGST Amount", "Net Amount"
+    ]:
         if col not in df.columns:
-            df[col] = "" if col in ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"] else 0.0
+            df[col] = 0
 
-    # Step 4: Clean numbers
-    for col in ["Quantity","Rate","Gross Amount","Discount%","Discount Amount",
-                "IGST%","IGST Amount","CGST%","CGST Amount","SGST%","SGST Amount","Net Amount"]:
+    # Convert numerics
+    num_cols = [
+        "Quantity", "Rate", "Gross Amount", "Discount(%)", "Discount Amount",
+        "IGST(%)", "IGST Amount", "CGST(%)", "CGST Amount",
+        "SGST(%)", "SGST Amount", "Net Amount"
+    ]
+    for col in num_cols:
         df[col] = df[col].apply(safe_float)
 
-    # Step 5: Extract meta from text
-    inv_match = re.search(r"(Invoice\s*No|Inv\s*No|Bill\s*No)[:\-]?\s*([A-Za-z0-9\-\/]+)", text, re.I)
-    invoice_no = inv_match.group(2) if inv_match else "Unknown"
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", text)
-    supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
-    customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
-
-    df["Invoice No"] = invoice_no
-    df["Supplier GSTIN"] = supplier_gstin
-    df["Customer GSTIN"] = customer_gstin
-    df["Source File"] = filename
-
-    # Step 6: Auto-calc only if missing
+    # ---------- Auto-calculations ----------
     df["Gross Amount"] = df.apply(
-        lambda x: x["Gross Amount"] if safe_float(x["Gross Amount"]) != 0
-        else safe_float(x["Quantity"]) * safe_float(x["Rate"]),
-        axis=1
-    )
-    df["Net Amount"] = df.apply(
-        lambda x: x["Net Amount"] if safe_float(x["Net Amount"]) != 0
-        else (x["Gross Amount"] - x["Discount Amount"] + x["IGST Amount"] + x["CGST Amount"] + x["SGST Amount"]),
-        axis=1
+        lambda x: x["Quantity"] * x["Rate"] if x["Gross Amount"] == 0 else x["Gross Amount"],
+        axis=1,
     )
 
-    return df[EXPECTED_COLUMNS]
+    df["Discount Amount"] = df.apply(
+        lambda x: (x["Gross Amount"] * x["Discount(%)"] / 100)
+        if x["Discount Amount"] == 0 and x["Discount(%)"] > 0
+        else x["Discount Amount"],
+        axis=1,
+    )
+
+    for tax in ["IGST", "CGST", "SGST"]:
+        df[f"{tax} Amount"] = df.apply(
+            lambda x: (x["Gross Amount"] - x["Discount Amount"]) * x[f"{tax}(%)"] / 100
+            if x[f"{tax} Amount"] == 0 and x[f"{tax}(%)"] > 0
+            else x[f"{tax} Amount"],
+            axis=1,
+        )
+
+    df["Net Amount"] = df.apply(
+        lambda x: (x["Gross Amount"] - x["Discount Amount"]
+                   + x["IGST Amount"] + x["CGST Amount"] + x["SGST Amount"])
+        if x["Net Amount"] == 0 else x["Net Amount"],
+        axis=1,
+    )
+
+    # Fill missing using text
+    df = fill_missing_from_text(df, text)
+
+    # Add source file info
+    df["Source File"] = source_file
+
+    return df
