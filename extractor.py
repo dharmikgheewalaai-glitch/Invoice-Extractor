@@ -2,7 +2,6 @@ import pdfplumber
 import pandas as pd
 import re
 
-# -------- Expected Columns --------
 EXPECTED_COLUMNS = [
     "Invoice No","Supplier GSTIN","Customer GSTIN","Source File",
     "HSN","Item Name","Quantity","Rate","Gross Amount",
@@ -10,7 +9,6 @@ EXPECTED_COLUMNS = [
     "CGST%","CGST Amount","SGST%","SGST Amount","Net Amount",
 ]
 
-# -------- Header Normalization Map --------
 HEADER_MAP = {
     "invoice no": "Invoice No","invoice #": "Invoice No","bill no": "Invoice No",
     "supplier gstin": "Supplier GSTIN","seller gstin": "Supplier GSTIN",
@@ -28,7 +26,6 @@ HEADER_MAP = {
     "net amount": "Net Amount","grand total": "Net Amount",
 }
 
-# -------- Helpers --------
 def normalize_headers(headers):
     return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
 
@@ -51,7 +48,6 @@ def ensure_columns(df):
                 df[col] = 0.0
     return df
 
-# -------- Main Parser --------
 def parse_invoice(pdf_path, filename):
     all_tables = []
     text_data = ""
@@ -80,7 +76,7 @@ def parse_invoice(pdf_path, filename):
         if any(k in col.lower() for k in ["amount","rate","qty","igst","cgst","sgst","discount","net","gross"]):
             df[col] = df[col].apply(clean_numeric)
 
-    # ---- Extract metadata from text ----
+    # ---- Extract metadata ----
     inv_match = re.search(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text_data, re.I)
     invoice_no = inv_match.group(1) if inv_match else "Unknown"
 
@@ -91,7 +87,6 @@ def parse_invoice(pdf_path, filename):
     # ---- Regex fallback for line-items ----
     if df.empty or df[["Quantity","Rate","Gross Amount"]].sum().sum() == 0:
         rows = []
-        # Example: "1234   Widget A   10   50.00   500.00"
         item_pattern = re.compile(
             r"(?P<hsn>\d{4,8})\s+(?P<item>[A-Za-z0-9 \-.,]+?)\s+(?P<qty>\d+)\s+(?P<rate>[\d,.]+)\s+(?P<amount>[\d,.]+)",
             re.I
@@ -102,10 +97,10 @@ def parse_invoice(pdf_path, filename):
             amount = clean_numeric(match.group("amount"))
 
             rows.append({
-                "Invoice No": invoice_no,
-                "Supplier GSTIN": supplier_gstin,
-                "Customer GSTIN": customer_gstin,
-                "Source File": filename,
+                "Invoice No": str(invoice_no),
+                "Supplier GSTIN": str(supplier_gstin),
+                "Customer GSTIN": str(customer_gstin),
+                "Source File": str(filename),
                 "HSN": str(match.group("hsn")),
                 "Item Name": str(match.group("item")).strip(),
                 "Quantity": qty,
@@ -123,16 +118,21 @@ def parse_invoice(pdf_path, filename):
             df = ensure_columns(df)
 
     # ---- Final metadata overwrite ----
-    df["Invoice No"] = invoice_no
-    df["Supplier GSTIN"] = supplier_gstin
-    df["Customer GSTIN"] = customer_gstin
-    df["Source File"] = filename
+    df["Invoice No"] = str(invoice_no)
+    df["Supplier GSTIN"] = str(supplier_gstin)
+    df["Customer GSTIN"] = str(customer_gstin)
+    df["Source File"] = str(filename)
 
-    # ---- Ensure correct dtypes for numeric fields ----
+    # ---- Enforce dtypes ----
     num_cols = ["Quantity","Rate","Gross Amount","Discount%","Discount Amount",
                 "IGST%","IGST Amount","CGST%","CGST Amount","SGST%","SGST Amount","Net Amount"]
+    text_cols = ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"]
+
     for col in num_cols:
         df[col] = df[col].apply(clean_numeric)
+
+    for col in text_cols:
+        df[col] = df[col].astype(str)
 
     # ---- Return wide-format ----
     df = ensure_columns(df)
