@@ -77,14 +77,18 @@ HEADER_MAP = {
     "amount due": "Net Amount", "final total": "Net Amount",
 }
 
+
 def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename dataframe columns using HEADER_MAP"""
+    """Rename dataframe columns using HEADER_MAP safely"""
     new_columns = {}
-    for col in df.columns:
-        key = col.strip().lower()
-        new_columns[col] = HEADER_MAP.get(key, col)
+    for i, col in enumerate(df.columns):
+        if col is None or str(col).strip() == "":
+            col = f"Unnamed_{i}"  # give fallback name
+        key = str(col).strip().lower()
+        new_columns[col] = HEADER_MAP.get(key, str(col))
     df = df.rename(columns=new_columns)
     return df
+
 
 def extract_table_from_pdf(pdf_path: str) -> pd.DataFrame:
     """Extract tables from PDF invoices using pdfplumber"""
@@ -96,6 +100,14 @@ def extract_table_from_pdf(pdf_path: str) -> pd.DataFrame:
             for table in tables:
                 if table:
                     df = pd.DataFrame(table[1:], columns=table[0])
+
+                    # handle missing headers
+                    if df.columns.isnull().any():
+                        df.columns = [
+                            f"Unnamed_{i}" if col is None else col
+                            for i, col in enumerate(df.columns)
+                        ]
+
                     df = normalize_headers(df)
                     all_tables.append(df)
 
