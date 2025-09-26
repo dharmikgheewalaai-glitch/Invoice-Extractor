@@ -1,32 +1,43 @@
-import streamlit as st
+from flask import Flask, request, render_template, send_file
+import os
 import pandas as pd
-from extractor import extract_table_from_pdf
+from extractor import extract_table_from_pdf, auto_calculate_missing
 
-st.set_page_config(page_title="Invoice Extractor", layout="wide")
+app = Flask(__name__)
 
-st.title("📑 Invoice Extractor")
-st.write("Upload your invoice PDF and extract tabular data into Excel/CSV.")
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-uploaded_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
 
-if uploaded_file:
-    with open("temp.pdf", "wb") as f:
-        f.write(uploaded_file.read())
+@app.route("/", methods=["GET", "POST"])
+def upload_files():
+    if request.method == "POST":
+        uploaded_files = request.files.getlist("file[]")
+        all_dataframes = []
 
-    st.info("⏳ Extracting data...")
-    df = extract_table_from_pdf("temp.pdf")
+        for file in uploaded_files:
+            if file.filename.endswith(".pdf"):
+                filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+                file.save(filepath)
 
-    if not df.empty:
-        st.success("✅ Data extracted successfully!")
-        st.dataframe(df)
+                df = extract_table_from_pdf(filepath)
 
-        # Download buttons
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download CSV", csv, "invoice_data.csv", "text/csv")
+                if not df.empty:
+                    # ✅ Add source file column
+                    df["Source File"] = file.filename
 
-        excel_file = "invoice_data.xlsx"
-        df.to_excel(excel_file, index=False)
-        with open(excel_file, "rb") as f:
-            st.download_button("Download Excel", f, "invoice_data.xlsx")
-    else:
-        st.error("⚠️ No tables found in the invoice.")
+                    # ✅ Auto calculate missing values
+                    df = auto_calculate_missing(df)
+
+                    all_dataframes.append(df)
+
+        if all_dataframes:
+            final_df = pd.concat(all_dataframes, ignore_index=True)
+            output_file = os.path.join(UPLOAD_FOLDER, "merged_output.xlsx")
+            final_df.to_excel(output_file, index=False)
+
+            return send_file(output_file, as_attachment=True)
+
+        return "❌ No valid tables found in uploaded PDFs."
+
+    return render_template("upload.html")
