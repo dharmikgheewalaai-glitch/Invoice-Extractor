@@ -1,20 +1,18 @@
-# 📑 Invoice Extractor
+# Invoice Extractor
 
-A simple app to extract tabular data from invoice PDFs and export them to **CSV/Excel**.
+A Python tool to extract invoice data from **multiple PDF files**, normalize headers, 
+auto-calculate missing values, and export results to Excel.
 
----
+## Features
+- Supports multiple PDFs at once.
+- Normalizes different header names using `HEADER_MAP`.
+- Auto-calculates missing values:
+  - Gross = Quantity × Rate
+  - Discount Amount from Discount %
+  - IGST / CGST / SGST from %
+  - Net Amount = Gross – Discount + Taxes
+- Exports consolidated data to `merged_output.xlsx`.
 
-## 🚀 Features
-- Upload PDF invoices
-- Extracts line items & tables
-- Normalizes headers (e.g., `Qty` → `Quantity`, `Invoice #` → `Invoice No`)
-- Download as CSV or Excel
-
----
-
-## 🛠️ Installation
-
-1. Clone this repo:
-   ```bash
-   git clone https://github.com/your-username/invoice-extractor.git
-   cd invoice-extractor
+## Installation
+```bash
+pip install -r requirements.txt

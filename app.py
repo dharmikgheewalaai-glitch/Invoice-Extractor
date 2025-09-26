@@ -1,43 +1,36 @@
-from flask import Flask, request, render_template, send_file
 import os
+import sys
 import pandas as pd
 from extractor import extract_table_from_pdf, auto_calculate_missing
 
-app = Flask(__name__)
+def process_pdfs(input_folder, output_file="merged_output.xlsx"):
+    """
+    Process all PDFs in the given folder and export a merged Excel file.
+    """
+    all_dataframes = []
 
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    for file in os.listdir(input_folder):
+        if file.lower().endswith(".pdf"):
+            filepath = os.path.join(input_folder, file)
+            print(f"📄 Processing {file}...")
 
+            df = extract_table_from_pdf(filepath)
 
-@app.route("/", methods=["GET", "POST"])
-def upload_files():
-    if request.method == "POST":
-        uploaded_files = request.files.getlist("file[]")
-        all_dataframes = []
+            if not df.empty:
+                df["Source File"] = file
+                df = auto_calculate_missing(df)
+                all_dataframes.append(df)
 
-        for file in uploaded_files:
-            if file.filename.endswith(".pdf"):
-                filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-                file.save(filepath)
+    if all_dataframes:
+        final_df = pd.concat(all_dataframes, ignore_index=True)
+        final_df.to_excel(output_file, index=False)
+        print(f"✅ Extraction complete! Saved to {output_file}")
+    else:
+        print("❌ No valid tables found in any PDFs.")
 
-                df = extract_table_from_pdf(filepath)
-
-                if not df.empty:
-                    # ✅ Add source file column
-                    df["Source File"] = file.filename
-
-                    # ✅ Auto calculate missing values
-                    df = auto_calculate_missing(df)
-
-                    all_dataframes.append(df)
-
-        if all_dataframes:
-            final_df = pd.concat(all_dataframes, ignore_index=True)
-            output_file = os.path.join(UPLOAD_FOLDER, "merged_output.xlsx")
-            final_df.to_excel(output_file, index=False)
-
-            return send_file(output_file, as_attachment=True)
-
-        return "❌ No valid tables found in uploaded PDFs."
-
-    return render_template("upload.html")
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python app.py <folder_with_pdfs>")
+    else:
+        input_folder = sys.argv[1]
+        process_pdfs(input_folder)
