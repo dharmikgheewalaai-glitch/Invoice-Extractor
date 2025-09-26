@@ -1,36 +1,40 @@
-import os
-import sys
+import streamlit as st
 import pandas as pd
 from extractor import extract_table_from_pdf, auto_calculate_missing
 
-def process_pdfs(input_folder, output_file="merged_output.xlsx"):
-    """
-    Process all PDFs in the given folder and export a merged Excel file.
-    """
+st.set_page_config(page_title="Invoice Extractor", layout="wide")
+
+st.title("📄 Invoice Extractor")
+st.write("Upload one or more invoice PDFs and download the extracted data as Excel.")
+
+uploaded_files = st.file_uploader("Upload Invoice PDFs", type=["pdf"], accept_multiple_files=True)
+
+if uploaded_files:
     all_dataframes = []
+    for uploaded_file in uploaded_files:
+        st.write(f"📑 Processing: {uploaded_file.name}")
+        with open(uploaded_file.name, "wb") as f:
+            f.write(uploaded_file.getbuffer())
 
-    for file in os.listdir(input_folder):
-        if file.lower().endswith(".pdf"):
-            filepath = os.path.join(input_folder, file)
-            print(f"📄 Processing {file}...")
-
-            df = extract_table_from_pdf(filepath)
-
-            if not df.empty:
-                df["Source File"] = file
-                df = auto_calculate_missing(df)
-                all_dataframes.append(df)
+        df = extract_table_from_pdf(uploaded_file.name)
+        if not df.empty:
+            df["Source File"] = uploaded_file.name
+            df = auto_calculate_missing(df)
+            all_dataframes.append(df)
 
     if all_dataframes:
         final_df = pd.concat(all_dataframes, ignore_index=True)
-        final_df.to_excel(output_file, index=False)
-        print(f"✅ Extraction complete! Saved to {output_file}")
-    else:
-        print("❌ No valid tables found in any PDFs.")
+        st.dataframe(final_df)
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python app.py <folder_with_pdfs>")
+        output_file = "merged_output.xlsx"
+        final_df.to_excel(output_file, index=False)
+
+        with open(output_file, "rb") as f:
+            st.download_button(
+                label="📥 Download Excel",
+                data=f,
+                file_name="merged_output.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     else:
-        input_folder = sys.argv[1]
-        process_pdfs(input_folder)
+        st.error("❌ No valid tables found in the uploaded PDFs.")
