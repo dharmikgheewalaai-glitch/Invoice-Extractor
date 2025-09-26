@@ -1,139 +1,105 @@
 import pdfplumber
 import pandas as pd
-import re
 
-EXPECTED_COLUMNS = [
-    "Invoice No","Supplier GSTIN","Customer GSTIN","Source File",
-    "HSN","Item Name","Quantity","Rate","Gross Amount",
-    "Discount%","Discount Amount","IGST%","IGST Amount",
-    "CGST%","CGST Amount","SGST%","SGST Amount","Net Amount",
-]
-
+# ✅ Extended Header Map
 HEADER_MAP = {
-    "invoice no": "Invoice No","invoice #": "Invoice No","bill no": "Invoice No",
-    "supplier gstin": "Supplier GSTIN","seller gstin": "Supplier GSTIN",
-    "customer gstin": "Customer GSTIN","buyer gstin": "Customer GSTIN",
-    "hsn": "HSN","hsn code": "HSN",
-    "item": "Item Name","description": "Item Name",
-    "qty": "Quantity","quantity": "Quantity",
-    "rate": "Rate","price": "Rate",
-    "gross amount": "Gross Amount","subtotal": "Gross Amount",
-    "discount%": "Discount%","disc%": "Discount%",
-    "discount amount": "Discount Amount","disc amt": "Discount Amount",
-    "igst%": "IGST%","igst amount": "IGST Amount",
-    "cgst%": "CGST%","cgst amount": "CGST Amount",
-    "sgst%": "SGST%","sgst amount": "SGST Amount",
-    "net amount": "Net Amount","grand total": "Net Amount",
+    # Invoice No
+    "invoice no": "Invoice No", "invoice #": "Invoice No", "inv. no.": "Invoice No",
+    "bill no": "Invoice No", "voucher no": "Invoice No", "document no": "Invoice No",
+    # Supplier GSTIN
+    "supplier gstin": "Supplier GSTIN", "seller gstin": "Supplier GSTIN",
+    "vendor gstin": "Supplier GSTIN", "supplier gst no": "Supplier GSTIN",
+    "seller tax id": "Supplier GSTIN", "vendor tax id": "Supplier GSTIN",
+    # Customer GSTIN
+    "customer gstin": "Customer GSTIN", "buyer gstin": "Customer GSTIN",
+    "client gstin": "Customer GSTIN", "recipient gstin": "Customer GSTIN",
+    "customer gst no": "Customer GSTIN", "buyer tax id": "Customer GSTIN",
+    # Source File
+    "source file": "Source File", "upload name": "Source File",
+    "source document": "Source File", "file reference": "Source File",
+    "document source": "Source File", "file path": "Source File",
+    # HSN
+    "hsn": "HSN", "hsn code": "HSN", "hsn/sac": "HSN",
+    "hsn code no": "HSN", "hsn classification": "HSN",
+    "hsn/sac code": "HSN", "harmonized code": "HSN",
+    # Item Name
+    "item": "Item Name", "item name": "Item Name", "description": "Item Name",
+    "product": "Item Name", "product name": "Item Name",
+    "service name": "Item Name", "goods/service description": "Item Name",
+    "material name": "Item Name", "particulars": "Item Name",
+    "item description": "Item Name", "product details": "Item Name",
+    # Quantity
+    "qty": "Quantity", "quantity": "Quantity", "no. of units": "Quantity",
+    "nos.": "Quantity", "packets": "Quantity", "pcs": "Quantity",
+    "units": "Quantity", "order quantity": "Quantity",
+    # Rate
+    "rate": "Rate", "price": "Rate", "unit cost": "Rate",
+    "unit price": "Rate", "per unit rate": "Rate", "selling price": "Rate",
+    "unit value": "Rate", "rate per item": "Rate",
+    # Gross Amount
+    "gross amount": "Gross Amount", "total value": "Gross Amount",
+    "total before tax": "Gross Amount", "amount before tax": "Gross Amount",
+    "subtotal": "Gross Amount", "line total": "Gross Amount",
+    # Discount %
+    "discount%": "Discount%", "discount": "Discount%",
+    "disc%": "Discount%", "rebate %": "Discount%",
+    "offer %": "Discount%", "deduction %": "Discount%",
+    "allowance %": "Discount%",
+    # Discount Amount
+    "discount amount": "Discount Amount", "disc amt": "Discount Amount",
+    "rebate amount": "Discount Amount", "deduction value": "Discount Amount",
+    "offer amount": "Discount Amount", "concession": "Discount Amount",
+    "discounted amount": "Discount Amount", "total discount": "Discount Amount",
+    # IGST %
+    "igst%": "IGST%", "igst rate %": "IGST%", "integrated tax %": "IGST%",
+    "igst duty %": "IGST%", "int. gst %": "IGST%",
+    # IGST Amount
+    "igst amount": "IGST Amount", "igst value": "IGST Amount",
+    "integrated tax amount": "IGST Amount", "igst duty amount": "IGST Amount",
+    "igst charges": "IGST Amount", "igst total": "IGST Amount", "igst": "IGST Amount",
+    # CGST %
+    "cgst%": "CGST%", "cgst rate %": "CGST%", "central tax %": "CGST%",
+    "c. gst %": "CGST%", "central gst rate": "CGST%",
+    # CGST Amount
+    "cgst amount": "CGST Amount", "cgst value": "CGST Amount",
+    "central tax amount": "CGST Amount", "cgst charges": "CGST Amount",
+    "cgst duty amount": "CGST Amount", "cgst total": "CGST Amount", "cgst": "CGST Amount",
+    # SGST %
+    "sgst%": "SGST%", "sgst rate %": "SGST%", "state tax %": "SGST%",
+    "s. gst %": "SGST%", "state gst rate": "SGST%",
+    # SGST Amount
+    "sgst amount": "SGST Amount", "sgst value": "SGST Amount",
+    "state tax amount": "SGST Amount", "sgst charges": "SGST Amount",
+    "sgst duty amount": "SGST Amount", "sgst total": "SGST Amount", "sgst": "SGST Amount",
+    # Net Amount
+    "net amount": "Net Amount", "grand total": "Net Amount",
+    "invoice total": "Net Amount", "total payable": "Net Amount",
+    "amount due": "Net Amount", "final total": "Net Amount",
 }
 
-def normalize_headers(headers):
-    return [HEADER_MAP.get(h.lower().strip(), h.strip()) for h in headers]
-
-def clean_numeric(value):
-    """Convert value to float safely"""
-    if isinstance(value, str):
-        value = re.sub(r"[^\d.\-]", "", value)
-    try:
-        return float(value) if value not in ("", None, "") else 0.0
-    except Exception:
-        return 0.0
-
-def ensure_columns(df):
-    """Guarantee all expected columns exist"""
-    for col in EXPECTED_COLUMNS:
-        if col not in df.columns:
-            if col in ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"]:
-                df[col] = ""
-            else:
-                df[col] = 0.0
+def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename dataframe columns using HEADER_MAP"""
+    new_columns = {}
+    for col in df.columns:
+        key = col.strip().lower()
+        new_columns[col] = HEADER_MAP.get(key, col)
+    df = df.rename(columns=new_columns)
     return df
 
-def parse_invoice(pdf_path, filename):
+def extract_table_from_pdf(pdf_path: str) -> pd.DataFrame:
+    """Extract tables from PDF invoices using pdfplumber"""
     all_tables = []
-    text_data = ""
 
-    # ---- Extract text and tables ----
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text_data += page.extract_text() or ""
             tables = page.extract_tables()
             for table in tables:
-                if table and len(table) > 1:
-                    df = pd.DataFrame(table[1:], columns=normalize_headers(table[0]))
+                if table:
+                    df = pd.DataFrame(table[1:], columns=table[0])
+                    df = normalize_headers(df)
                     all_tables.append(df)
 
-    # ---- Merge or empty ----
     if all_tables:
-        df = pd.concat(all_tables, ignore_index=True)
+        return pd.concat(all_tables, ignore_index=True)
     else:
-        df = pd.DataFrame(columns=EXPECTED_COLUMNS)
-
-    # ---- Ensure all columns exist before checks ----
-    df = ensure_columns(df)
-
-    # ---- Clean numbers ----
-    for col in df.columns:
-        if any(k in col.lower() for k in ["amount","rate","qty","igst","cgst","sgst","discount","net","gross"]):
-            df[col] = df[col].apply(clean_numeric)
-
-    # ---- Extract metadata ----
-    inv_match = re.search(r"Invoice\s*No[:\-]?\s*([A-Za-z0-9\-\/]+)", text_data, re.I)
-    invoice_no = inv_match.group(1) if inv_match else "Unknown"
-
-    gstins = re.findall(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", text_data)
-    supplier_gstin = gstins[0] if len(gstins) > 0 else "Unknown"
-    customer_gstin = gstins[1] if len(gstins) > 1 else "Unknown"
-
-    # ---- Regex fallback for line-items ----
-    if df.empty or df[["Quantity","Rate","Gross Amount"]].sum().sum() == 0:
-        rows = []
-        item_pattern = re.compile(
-            r"(?P<hsn>\d{4,8})\s+(?P<item>[A-Za-z0-9 \-.,]+?)\s+(?P<qty>\d+)\s+(?P<rate>[\d,.]+)\s+(?P<amount>[\d,.]+)",
-            re.I
-        )
-        for match in item_pattern.finditer(text_data):
-            qty = clean_numeric(match.group("qty"))
-            rate = clean_numeric(match.group("rate"))
-            amount = clean_numeric(match.group("amount"))
-
-            rows.append({
-                "Invoice No": str(invoice_no),
-                "Supplier GSTIN": str(supplier_gstin),
-                "Customer GSTIN": str(customer_gstin),
-                "Source File": str(filename),
-                "HSN": str(match.group("hsn")),
-                "Item Name": str(match.group("item")).strip(),
-                "Quantity": qty,
-                "Rate": rate,
-                "Gross Amount": amount,
-                "Discount%": 0.0, "Discount Amount": 0.0,
-                "IGST%": 0.0, "IGST Amount": 0.0,
-                "CGST%": 0.0, "CGST Amount": 0.0,
-                "SGST%": 0.0, "SGST Amount": 0.0,
-                "Net Amount": amount,
-            })
-
-        if rows:
-            df = pd.DataFrame(rows)
-            df = ensure_columns(df)
-
-    # ---- Final metadata overwrite ----
-    df["Invoice No"] = str(invoice_no)
-    df["Supplier GSTIN"] = str(supplier_gstin)
-    df["Customer GSTIN"] = str(customer_gstin)
-    df["Source File"] = str(filename)
-
-    # ---- Enforce dtypes ----
-    num_cols = ["Quantity","Rate","Gross Amount","Discount%","Discount Amount",
-                "IGST%","IGST Amount","CGST%","CGST Amount","SGST%","SGST Amount","Net Amount"]
-    text_cols = ["Invoice No","Supplier GSTIN","Customer GSTIN","Source File","HSN","Item Name"]
-
-    for col in num_cols:
-        df[col] = df[col].apply(clean_numeric)
-
-    for col in text_cols:
-        df[col] = df[col].astype(str)
-
-    # ---- Return wide-format ----
-    df = ensure_columns(df)
-    return df[EXPECTED_COLUMNS]
+        return pd.DataFrame()  # empty if no tables found
